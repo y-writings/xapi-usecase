@@ -1,0 +1,33 @@
+version: 1
+repository: y-writings/templates
+ref: main
+commit: 5d0b05ef41bdcd92ef26b58216fce0b84a081ca7
+files:
+    - id: github-workflows
+      target_path: .github/workflows/00-entire-checkpoint-collection.yaml
+    - id: github-workflows
+      target_path: .github/workflows/00-security-scan.yaml
+    - id: github-workflows
+      target_path: .github/workflows/00-semantic-pr-check.yaml
+    - id: github-workflows
+      target_path: .github/workflows/00-weekly-merged-prs-report.yaml
+    - id: commitlint
+      target_path: .commitlintrc.yaml
+    - id: lefthook
+      target_path: lefthook.yaml
+    - id: pinact
+      target_path: .pinact.yaml
+    - id: mise
+      target_path: .mise/config.baseline.toml
+    - id: mise
+      target_path: .miserc.toml
+    - id: mise-project
+      target_path: .mise/config.toml
+    - id: LICENSE
+      target_path: LICENSE
+    - id: entire
+      target_path: .entire/.gitignore
+    - id: entire
+      target_path: .entire/settings.json
+    - id: entire
+      target_path: .opencode/plugins/entire.ts

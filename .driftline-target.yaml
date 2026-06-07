@@ -1,0 +1,14 @@
+version: 1
+source:
+    repository: y-writings/templates
+    ref: main
+files:
+    - id: github-workflows
+    - id: commitlint
+    - id: lefthook
+    - id: pinact
+    - id: mise
+    - id: mise-project
+      if_not_exists: true
+    - id: LICENSE
+    - id: entire
