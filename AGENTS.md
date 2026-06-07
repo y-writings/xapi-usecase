@@ -2,7 +2,7 @@
 
 ## Project Status
 
-`driftline` is a pre-release CLI tool. It has not shipped a stable public interface, so there is no compatibility contract for existing command names, flags, configuration fields, output formats, lock-file formats, internal APIs, or repository layout.
+`xapi-usecase` is a pre-release CLI tool. It has not shipped a stable public interface, so there is no compatibility contract for existing command names, flags, configuration fields, output formats, lock-file formats, internal APIs, or repository layout.
 
 ## Breaking Changes
 
