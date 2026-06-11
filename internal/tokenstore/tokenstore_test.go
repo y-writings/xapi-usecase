@@ -149,6 +149,89 @@ func TestDefaultPathUsesUserConfigDir(t *testing.T) {
 	}
 }
 
+func TestLoadReadsSavedToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token.json")
+	writeTokenJSON(t, path, `{"access_token":"access-123","refresh_token":"refresh-123","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_at":"2026-06-07T12:34:56Z"}`)
+
+	token, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if token.AccessToken != "access-123" {
+		t.Fatalf("AccessToken = %q, want access-123", token.AccessToken)
+	}
+	if token.RefreshToken != "refresh-123" {
+		t.Fatalf("RefreshToken = %q, want refresh-123", token.RefreshToken)
+	}
+	if token.TokenType != "bearer" {
+		t.Fatalf("TokenType = %q, want bearer", token.TokenType)
+	}
+	if token.Scope != "tweet.read users.read bookmark.read offline.access" {
+		t.Fatalf("Scope = %q, want default scope", token.Scope)
+	}
+	wantExpiresAt := time.Date(2026, 6, 7, 12, 34, 56, 0, time.UTC)
+	if !token.ExpiresAt.Equal(wantExpiresAt) {
+		t.Fatalf("ExpiresAt = %s, want %s", token.ExpiresAt, wantExpiresAt)
+	}
+}
+
+func TestLoadIgnoresUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "token.json")
+	writeTokenJSON(t, path, `{"access_token":"access-123","refresh_token":"refresh-123","token_type":"bearer","scope":"tweet.read","expires_at":"2026-06-07T12:34:56Z","unknown":"ignored"}`)
+
+	if _, err := Load(path); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+}
+
+func TestLoadRejectsMissingOrEmptyAccessToken(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		json string
+	}{
+		{name: "missing", json: `{"expires_at":"2026-06-07T12:34:56Z"}`},
+		{name: "empty", json: `{"access_token":"","expires_at":"2026-06-07T12:34:56Z"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "token.json")
+			writeTokenJSON(t, path, test.json)
+
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestLoadRejectsMissingEmptyOrInvalidExpiresAt(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		json string
+	}{
+		{name: "missing", json: `{"access_token":"access-123"}`},
+		{name: "empty", json: `{"access_token":"access-123","expires_at":""}`},
+		{name: "invalid", json: `{"access_token":"access-123","expires_at":"not-a-time"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "token.json")
+			writeTokenJSON(t, path, test.json)
+
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load() error = nil, want error")
+			}
+		})
+	}
+}
+
+func writeTokenJSON(t *testing.T, path string, body string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
 func assertSavedValue(t *testing.T, saved map[string]string, key string, want string) {
 	t.Helper()
 

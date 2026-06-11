@@ -2,6 +2,7 @@ package tokenstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -24,6 +25,37 @@ func DefaultPath() (string, error) {
 	}
 
 	return filepath.Join(configDir, "xapi-usecase", "token.json"), nil
+}
+
+func Load(path string) (xoauth.Token, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return xoauth.Token{}, err
+	}
+
+	var saved savedToken
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return xoauth.Token{}, err
+	}
+	if saved.AccessToken == "" {
+		return xoauth.Token{}, fmt.Errorf("access token is required in token file")
+	}
+	if saved.ExpiresAt == "" {
+		return xoauth.Token{}, fmt.Errorf("expires_at is required in token file")
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, saved.ExpiresAt)
+	if err != nil {
+		return xoauth.Token{}, fmt.Errorf("parse expires_at: %w", err)
+	}
+
+	return xoauth.Token{
+		AccessToken:  saved.AccessToken,
+		RefreshToken: saved.RefreshToken,
+		TokenType:    saved.TokenType,
+		Scope:        saved.Scope,
+		ExpiresAt:    expiresAt,
+	}, nil
 }
 
 func Save(path string, token xoauth.Token) error {
