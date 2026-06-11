@@ -115,6 +115,77 @@ func TestMeDecodesAuthenticatedUser(t *testing.T) {
 	}
 }
 
+func TestBookmarksRawSendsExpectedQueryAndReturnsRawJSON(t *testing.T) {
+	const rawResponse = `{"data":[{"id":"1","text":"hello"}],"meta":{"result_count":1}}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/2/users/2244994945/bookmarks" {
+			t.Fatalf("path = %q, want /2/users/2244994945/bookmarks", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer access-123" {
+			t.Fatalf("Authorization = %q, want Bearer access-123", got)
+		}
+
+		query := r.URL.Query()
+		assertQueryValue(t, query, "max_results", "10")
+		assertQueryValue(t, query, "pagination_token", "next-token")
+		assertQueryValue(t, query, "tweet.fields", "created_at,author_id")
+		assertQueryValue(t, query, "expansions", "author_id")
+		assertQueryValue(t, query, "user.fields", "username,name")
+		assertQueryValue(t, query, "media.fields", "url")
+		assertQueryValue(t, query, "poll.fields", "options")
+		assertQueryValue(t, query, "place.fields", "full_name")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, rawResponse)
+	}))
+	defer server.Close()
+
+	client := &Client{AccessToken: "access-123", BaseURL: server.URL, HTTPClient: server.Client()}
+
+	got, err := client.BookmarksRaw(context.Background(), "2244994945", BookmarkOptions{
+		MaxResults:      10,
+		PaginationToken: "next-token",
+		TweetFields:     "created_at,author_id",
+		Expansions:      "author_id",
+		UserFields:      "username,name",
+		MediaFields:     "url",
+		PollFields:      "options",
+		PlaceFields:     "full_name",
+	})
+	if err != nil {
+		t.Fatalf("BookmarksRaw() error = %v", err)
+	}
+	if string(got) != rawResponse {
+		t.Fatalf("BookmarksRaw() = %q, want %q", string(got), rawResponse)
+	}
+}
+
+func TestBookmarksRawOmitsEmptyOptionalQueryParameters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.RawQuery; got != "" {
+			t.Fatalf("RawQuery = %q, want empty", got)
+		}
+		fmt.Fprint(w, `{"data":[]}`)
+	}))
+	defer server.Close()
+
+	client := &Client{AccessToken: "access-123", BaseURL: server.URL, HTTPClient: server.Client()}
+
+	if _, err := client.BookmarksRaw(context.Background(), "2244994945", BookmarkOptions{}); err != nil {
+		t.Fatalf("BookmarksRaw() error = %v", err)
+	}
+}
+
+func assertQueryValue(t *testing.T, query map[string][]string, key string, want string) {
+	t.Helper()
+
+	values := query[key]
+	if len(values) != 1 || values[0] != want {
+		t.Fatalf("query[%s] = %v, want [%s]", key, values, want)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {

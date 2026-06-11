@@ -3,6 +3,7 @@ package xapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,6 +41,17 @@ type User struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Username string `json:"username"`
+}
+
+type BookmarkOptions struct {
+	MaxResults      int
+	PaginationToken string
+	TweetFields     string
+	Expansions      string
+	UserFields      string
+	MediaFields     string
+	PollFields      string
+	PlaceFields     string
 }
 
 func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
@@ -90,6 +102,51 @@ func (c *Client) Me(ctx context.Context) (MeResponse, error) {
 	}
 
 	return me, nil
+}
+
+func (c *Client) BookmarksRaw(ctx context.Context, userID string, options BookmarkOptions) ([]byte, error) {
+	if userID == "" {
+		return nil, errors.New("user ID is required")
+	}
+
+	query := url.Values{}
+	if options.MaxResults > 0 {
+		query.Set("max_results", fmt.Sprintf("%d", options.MaxResults))
+	}
+	if options.PaginationToken != "" {
+		query.Set("pagination_token", options.PaginationToken)
+	}
+	if options.TweetFields != "" {
+		query.Set("tweet.fields", options.TweetFields)
+	}
+	if options.Expansions != "" {
+		query.Set("expansions", options.Expansions)
+	}
+	if options.UserFields != "" {
+		query.Set("user.fields", options.UserFields)
+	}
+	if options.MediaFields != "" {
+		query.Set("media.fields", options.MediaFields)
+	}
+	if options.PollFields != "" {
+		query.Set("poll.fields", options.PollFields)
+	}
+	if options.PlaceFields != "" {
+		query.Set("place.fields", options.PlaceFields)
+	}
+
+	path := "/2/users/" + url.PathEscape(userID) + "/bookmarks"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+
+	response, err := c.Do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	return io.ReadAll(response.Body)
 }
 
 func (c *Client) resolveURL(path string) (string, error) {

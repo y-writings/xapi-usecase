@@ -34,12 +34,27 @@ func (e commandLineError) Error() string {
 var errHelpRequested = errors.New("help requested")
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, getenv getenvFunc) int {
-	if len(args) < 2 || args[0] != "auth" || args[1] != "login" {
+	if len(args) == 1 && args[0] == "--help" {
+		printUsage(stdout)
+		return 0
+	}
+	if len(args) < 2 {
 		printUsage(stderr)
 		return 2
 	}
 
-	if err := authLogin(ctx, args[2:], stdout, stderr, getenv); err != nil {
+	var err error
+	switch {
+	case args[0] == "auth" && args[1] == "login":
+		err = authLogin(ctx, args[2:], stdout, stderr, getenv)
+	case args[0] == "bookmarks" && args[1] == "list":
+		err = bookmarksList(ctx, args[2:], stdout, stderr, getenv)
+	default:
+		printUsage(stderr)
+		return 2
+	}
+
+	if err != nil {
 		if errors.Is(err, errHelpRequested) {
 			return 0
 		}
@@ -69,14 +84,14 @@ func authLogin(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			printUsage(stdout)
+			printAuthLoginUsage(stdout)
 			return errHelpRequested
 		}
-		printUsage(stderr)
+		printAuthLoginUsage(stderr)
 		return commandLineError(err.Error())
 	}
 	if flags.NArg() > 0 {
-		printUsage(stderr)
+		printAuthLoginUsage(stderr)
 		return commandLineError(fmt.Sprintf("unexpected argument: %s", flags.Arg(0)))
 	}
 	if clientID == "" {
@@ -183,9 +198,39 @@ func shutdownServer(server *http.Server) {
 	_ = server.Shutdown(ctx)
 }
 
-func printUsage(stderr io.Writer) {
-	fmt.Fprintln(stderr, "Usage:")
-	fmt.Fprintln(stderr, "  xapi-usecase auth login [--client-id CLIENT_ID] [--token-file PATH] [--port PORT] [--timeout DURATION]")
-	fmt.Fprintln(stderr)
-	fmt.Fprintf(stderr, "Environment:\n  %s  OAuth2 client ID used when --client-id is omitted\n", clientIDEnv)
+func printUsage(w io.Writer) {
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  xapi-usecase auth login [--client-id CLIENT_ID] [--token-file PATH] [--port PORT] [--timeout DURATION]")
+	fmt.Fprintln(w, "  xapi-usecase bookmarks list [--token-file PATH] [--max-results N] [--pagination-token TOKEN]")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Run a command with --help for command-specific options.")
+}
+
+func printAuthLoginUsage(w io.Writer) {
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  xapi-usecase auth login [--client-id CLIENT_ID] [--token-file PATH] [--port PORT] [--timeout DURATION]")
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Environment:\n  %s  OAuth2 client ID used when --client-id is omitted\n", clientIDEnv)
+}
+
+func printBookmarksListUsage(w io.Writer) {
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  xapi-usecase bookmarks list [options]")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --token-file PATH           OAuth2 token JSON file")
+	fmt.Fprintln(w, "  --client-id CLIENT_ID       OAuth2 client ID used only when refresh is needed")
+	fmt.Fprintln(w, "  --max-results N             results per page, 1 through 100")
+	fmt.Fprintln(w, "  --pagination-token TOKEN    page token from meta.next_token")
+	fmt.Fprintln(w, "  --tweet-fields FIELDS       comma-separated tweet.fields, defaults to created_at,author_id")
+	fmt.Fprintln(w, "  --expansions EXPANSIONS     comma-separated expansions")
+	fmt.Fprintln(w, "  --user-fields FIELDS        comma-separated user.fields")
+	fmt.Fprintln(w, "  --media-fields FIELDS       comma-separated media.fields")
+	fmt.Fprintln(w, "  --poll-fields FIELDS        comma-separated poll.fields")
+	fmt.Fprintln(w, "  --place-fields FIELDS       comma-separated place.fields")
+	fmt.Fprintln(w, "  --timeout DURATION          command timeout, defaults to 30s")
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Environment:\n  %s  OAuth2 client ID used for refresh when --client-id is omitted\n", clientIDEnv)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Required scopes: bookmark.read, tweet.read, users.read. offline.access is required for refresh.")
 }
