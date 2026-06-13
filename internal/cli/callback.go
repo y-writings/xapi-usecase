@@ -25,7 +25,12 @@ func newCallbackHandler(expectedState string, results chan<- callbackResult) htt
 			return
 		}
 
-		if message := callbackErrorMessage(query.Get("error"), query.Get("error_description"), expectedState, query.Get("code")); message != "" {
+		if message := callbackErrorMessage(
+			query.Get("error"),
+			query.Get("error_description"),
+			expectedState,
+			query.Get("code"),
+		); message != "" {
 			err := errors.New(message)
 			sendCallbackResult(results, callbackResult{Err: err})
 			http.Error(w, message, http.StatusBadRequest)

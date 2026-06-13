@@ -91,7 +91,12 @@ func (c *Client) AuthURL(redirectURI, state, codeChallenge string) (string, erro
 	return endpoint.String(), nil
 }
 
-func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI, codeVerifier string) (Token, error) {
+func (c *Client) ExchangeCode(
+	ctx context.Context,
+	code string,
+	redirectURI string,
+	codeVerifier string,
+) (Token, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("client_id", c.ClientID)
@@ -111,8 +116,17 @@ func (c *Client) Refresh(ctx context.Context, current Token) (Token, error) {
 	return c.postTokenForm(ctx, form, current.RefreshToken)
 }
 
-func (c *Client) postTokenForm(ctx context.Context, form url.Values, fallbackRefreshToken string) (Token, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenEndpoint(), strings.NewReader(form.Encode()))
+func (c *Client) postTokenForm(
+	ctx context.Context,
+	form url.Values,
+	fallbackRefreshToken string,
+) (Token, error) {
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.tokenEndpoint(),
+		strings.NewReader(form.Encode()),
+	)
 	if err != nil {
 		return Token{}, err
 	}
@@ -122,7 +136,9 @@ func (c *Client) postTokenForm(ctx context.Context, form url.Values, fallbackRef
 	if err != nil {
 		return Token{}, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))

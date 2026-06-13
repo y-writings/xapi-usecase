@@ -3,3 +3,32 @@
 
 [tools]
 go = "1.26.3"
+golangci-lint = "2.12.2"
+
+[tasks.fmt]
+description = "Format Go source files"
+run = "golangci-lint fmt"
+
+[tasks."fmt:check"]
+description = "Check Go source formatting"
+run = "golangci-lint fmt --diff"
+
+[tasks.lint]
+description = "Run Go linters"
+run = "golangci-lint run ./..."
+
+[tasks.modernize]
+description = "Run Go modernization linter"
+run = "golangci-lint run --enable-only modernize ./..."
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."
+
+[tasks.check]
+description = "Run formatting, lint, and tests"
+run = [
+  { task = "fmt:check" },
+  { task = "lint" },
+  { task = "test" },
+]

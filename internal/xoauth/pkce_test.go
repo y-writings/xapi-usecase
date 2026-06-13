@@ -48,7 +48,12 @@ func TestAuthURLContainsRequiredQuery(t *testing.T) {
 	}
 
 	if parsed.Scheme != "https" || parsed.Host != "x.com" || parsed.Path != "/i/oauth2/authorize" {
-		t.Fatalf("AuthURL endpoint = %s://%s%s, want https://x.com/i/oauth2/authorize", parsed.Scheme, parsed.Host, parsed.Path)
+		t.Fatalf(
+			"AuthURL endpoint = %s://%s%s, want https://x.com/i/oauth2/authorize",
+			parsed.Scheme,
+			parsed.Host,
+			parsed.Path,
+		)
 	}
 
 	query := parsed.Query()

@@ -58,7 +58,11 @@ func TestCallbackHandlerRejectsOAuthError(t *testing.T) {
 	results := make(chan callbackResult, 1)
 	handler := newCallbackHandler("state-123", results)
 
-	request := httptest.NewRequest(http.MethodGet, "/callback?state=state-123&error=access_denied&error_description=nope", nil)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/callback?state=state-123&error=access_denied&error_description=nope",
+		nil,
+	)
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, request)
@@ -90,7 +94,13 @@ func TestCallbackHandlerRedactsStateAndCodeFromOAuthError(t *testing.T) {
 	results := make(chan callbackResult, 1)
 	handler := newCallbackHandler("state-123", results)
 
-	request := httptest.NewRequest(http.MethodGet, "/callback?state=state-123&code=code-123&error=access_denied&error_description=before-state-123-middle-code-123-after", nil)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/callback?state=state-123&code=code-123&"+
+			"error=access_denied&"+
+			"error_description=before-state-123-middle-code-123-after",
+		nil,
+	)
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, request)

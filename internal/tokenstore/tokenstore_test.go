@@ -77,7 +77,11 @@ func TestSaveTightensExistingPermissionsAndReplacesToken(t *testing.T) {
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatalf("Chmod(parent) error = %v", err)
 	}
-	if err := os.WriteFile(path, []byte(`{"access_token":"old-access","refresh_token":"old-refresh"}`), 0o644); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte(`{"access_token":"old-access","refresh_token":"old-refresh"}`),
+		0o644,
+	); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	if err := os.Chmod(path, 0o644); err != nil {
@@ -151,7 +155,13 @@ func TestDefaultPathUsesUserConfigDir(t *testing.T) {
 
 func TestLoadReadsSavedToken(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token.json")
-	writeTokenJSON(t, path, `{"access_token":"access-123","refresh_token":"refresh-123","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_at":"2026-06-07T12:34:56Z"}`)
+	writeTokenJSON(t, path, `{
+		"access_token":"access-123",
+		"refresh_token":"refresh-123",
+		"token_type":"bearer",
+		"scope":"tweet.read users.read bookmark.read offline.access",
+		"expires_at":"2026-06-07T12:34:56Z"
+	}`)
 
 	token, err := Load(path)
 	if err != nil {
@@ -178,7 +188,14 @@ func TestLoadReadsSavedToken(t *testing.T) {
 
 func TestLoadIgnoresUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token.json")
-	writeTokenJSON(t, path, `{"access_token":"access-123","refresh_token":"refresh-123","token_type":"bearer","scope":"tweet.read","expires_at":"2026-06-07T12:34:56Z","unknown":"ignored"}`)
+	writeTokenJSON(t, path, `{
+		"access_token":"access-123",
+		"refresh_token":"refresh-123",
+		"token_type":"bearer",
+		"scope":"tweet.read",
+		"expires_at":"2026-06-07T12:34:56Z",
+		"unknown":"ignored"
+	}`)
 
 	if _, err := Load(path); err != nil {
 		t.Fatalf("Load() error = %v", err)

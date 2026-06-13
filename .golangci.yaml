@@ -1,0 +1,40 @@
+version: "2"
+
+run:
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - govet
+    - ineffassign
+    - lll
+    - modernize
+    - staticcheck
+    - unused
+  settings:
+    lll:
+      line-length: 100
+      tab-width: 4
+  exclusions:
+    generated: strict
+    rules:
+      - linters:
+          - lll
+        source: "^//go:generate "
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: github.com/y-writings/xapi-usecase
+    goimports:
+      local-prefixes:
+        - github.com/y-writings/xapi-usecase
+  exclusions:
+    generated: strict
