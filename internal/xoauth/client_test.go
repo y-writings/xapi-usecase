@@ -12,6 +12,23 @@ import (
 	"time"
 )
 
+const (
+	exchangedTokenJSON = `{"access_token":"access-123","refresh_token":"refresh-123",` +
+		`"token_type":"bearer",` +
+		`"scope":"tweet.read users.read bookmark.read offline.access",` +
+		`"expires_in":7200}`
+
+	refreshedTokenWithoutRotationJSON = `{"access_token":"new-access",` +
+		`"token_type":"bearer",` +
+		`"scope":"tweet.read users.read bookmark.read offline.access",` +
+		`"expires_in":3600}`
+
+	refreshedTokenJSON = `{"access_token":"new-access","refresh_token":"new-refresh",` +
+		`"token_type":"bearer",` +
+		`"scope":"tweet.read users.read bookmark.read offline.access",` +
+		`"expires_in":3600}`
+)
+
 func TestExchangeCodeSendsExpectedFormAndParsesToken(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
 
@@ -32,7 +49,7 @@ func TestExchangeCodeSendsExpectedFormAndParsesToken(t *testing.T) {
 		})
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"access_token":"access-123","refresh_token":"refresh-123","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":7200}`)
+		writeResponse(t, w, exchangedTokenJSON)
 	}))
 	defer server.Close()
 
@@ -43,7 +60,12 @@ func TestExchangeCodeSendsExpectedFormAndParsesToken(t *testing.T) {
 		Now:           func() time.Time { return fixedNow },
 	}
 
-	token, err := client.ExchangeCode(context.Background(), "code-123", "http://127.0.0.1:8765/callback", "verifier-123")
+	token, err := client.ExchangeCode(
+		context.Background(),
+		"code-123",
+		"http://127.0.0.1:8765/callback",
+		"verifier-123",
+	)
 	if err != nil {
 		t.Fatalf("ExchangeCode() error = %v", err)
 	}
@@ -83,7 +105,7 @@ func TestRefreshSendsExpectedFormAndPreservesRefreshTokenWhenOmitted(t *testing.
 		})
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"access_token":"new-access","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":3600}`)
+		writeResponse(t, w, refreshedTokenWithoutRotationJSON)
 	}))
 	defer server.Close()
 
@@ -114,11 +136,15 @@ func TestRefreshSendsExpectedFormAndPreservesRefreshTokenWhenOmitted(t *testing.
 func TestRefreshUsesRotatedRefreshTokenWhenReturned(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"access_token":"new-access","refresh_token":"new-refresh","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":3600}`)
+		writeResponse(t, w, refreshedTokenJSON)
 	}))
 	defer server.Close()
 
-	client := &Client{ClientID: "client-123", HTTPClient: server.Client(), TokenEndpoint: server.URL}
+	client := &Client{
+		ClientID:      "client-123",
+		HTTPClient:    server.Client(),
+		TokenEndpoint: server.URL,
+	}
 
 	token, err := client.Refresh(context.Background(), Token{RefreshToken: "old-refresh"})
 	if err != nil {
@@ -142,16 +168,33 @@ func TestTokenEndpointHTTPErrorIncludesStatusPathAndBody(t *testing.T) {
 		TokenEndpoint: server.URL + "/2/oauth2/token",
 	}
 
-	_, err := client.ExchangeCode(context.Background(), "code-123", "http://127.0.0.1:8765/callback", "verifier-123")
+	_, err := client.ExchangeCode(
+		context.Background(),
+		"code-123",
+		"http://127.0.0.1:8765/callback",
+		"verifier-123",
+	)
 	if err == nil {
 		t.Fatal("ExchangeCode() error = nil, want error")
 	}
 
 	message := err.Error()
-	for _, want := range []string{"400 Bad Request", "/2/oauth2/token", `{"error":"invalid_request"}`} {
+	for _, want := range []string{
+		"400 Bad Request",
+		"/2/oauth2/token",
+		`{"error":"invalid_request"}`,
+	} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("error = %q, want to contain %q", message, want)
 		}
+	}
+}
+
+func writeResponse(t *testing.T, w io.Writer, body string) {
+	t.Helper()
+
+	if _, err := fmt.Fprint(w, body); err != nil {
+		t.Fatalf("Fprint(response) error = %v", err)
 	}
 }
 

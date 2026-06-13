@@ -45,7 +45,13 @@ type bookmarksListOptions struct {
 	Timeout         time.Duration
 }
 
-func bookmarksList(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, getenv getenvFunc) error {
+func bookmarksList(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	getenv getenvFunc,
+) error {
 	options, err := parseBookmarksListOptions(args, stdout, stderr, getenv)
 	if err != nil {
 		return err
@@ -106,7 +112,12 @@ func bookmarksList(ctx context.Context, args []string, stdout io.Writer, stderr 
 	return writePrettyJSON(stdout, raw)
 }
 
-func parseBookmarksListOptions(args []string, stdout io.Writer, stderr io.Writer, getenv getenvFunc) (bookmarksListOptions, error) {
+func parseBookmarksListOptions(
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	getenv getenvFunc,
+) (bookmarksListOptions, error) {
 	options := bookmarksListOptions{
 		ClientID:    getenv(clientIDEnv),
 		TweetFields: defaultBookmarkTweetFields,
@@ -115,16 +126,21 @@ func parseBookmarksListOptions(args []string, stdout io.Writer, stderr io.Writer
 
 	flags := flag.NewFlagSet("xapi-usecase bookmarks list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringVar(&options.ClientID, "client-id", options.ClientID, "OAuth2 client ID used only when refresh is needed")
-	flags.StringVar(&options.TokenFile, "token-file", options.TokenFile, "path to read and update the OAuth2 token")
-	flags.IntVar(&options.MaxResults, "max-results", options.MaxResults, "results per page, 1 through 100")
-	flags.StringVar(&options.PaginationToken, "pagination-token", options.PaginationToken, "page token from meta.next_token")
-	flags.StringVar(&options.TweetFields, "tweet-fields", options.TweetFields, "comma-separated tweet.fields")
-	flags.StringVar(&options.Expansions, "expansions", options.Expansions, "comma-separated expansions")
-	flags.StringVar(&options.UserFields, "user-fields", options.UserFields, "comma-separated user.fields")
-	flags.StringVar(&options.MediaFields, "media-fields", options.MediaFields, "comma-separated media.fields")
-	flags.StringVar(&options.PollFields, "poll-fields", options.PollFields, "comma-separated poll.fields")
-	flags.StringVar(&options.PlaceFields, "place-fields", options.PlaceFields, "comma-separated place.fields")
+	flags.StringVar(&options.ClientID, "client-id", options.ClientID, "OAuth2 client ID")
+	flags.StringVar(&options.TokenFile, "token-file", options.TokenFile, "OAuth2 token path")
+	flags.IntVar(&options.MaxResults, "max-results", options.MaxResults, "results per page")
+	flags.StringVar(
+		&options.PaginationToken,
+		"pagination-token",
+		options.PaginationToken,
+		"page token",
+	)
+	flags.StringVar(&options.TweetFields, "tweet-fields", options.TweetFields, "tweet.fields")
+	flags.StringVar(&options.Expansions, "expansions", options.Expansions, "expansions")
+	flags.StringVar(&options.UserFields, "user-fields", options.UserFields, "user.fields")
+	flags.StringVar(&options.MediaFields, "media-fields", options.MediaFields, "media.fields")
+	flags.StringVar(&options.PollFields, "poll-fields", options.PollFields, "poll.fields")
+	flags.StringVar(&options.PlaceFields, "place-fields", options.PlaceFields, "place.fields")
 	flags.DurationVar(&options.Timeout, "timeout", options.Timeout, "command timeout")
 
 	if err := flags.Parse(args); err != nil {
@@ -137,9 +153,12 @@ func parseBookmarksListOptions(args []string, stdout io.Writer, stderr io.Writer
 	}
 	if flags.NArg() > 0 {
 		printBookmarksListUsage(stderr)
-		return bookmarksListOptions{}, commandLineError(fmt.Sprintf("unexpected argument: %s", flags.Arg(0)))
+		return bookmarksListOptions{}, commandLineError(
+			fmt.Sprintf("unexpected argument: %s", flags.Arg(0)),
+		)
 	}
-	if flagIsSet(flags, "max-results") && (options.MaxResults < 1 || options.MaxResults > maxBookmarkResultsInclusive) {
+	if flagIsSet(flags, "max-results") &&
+		(options.MaxResults < 1 || options.MaxResults > maxBookmarkResultsInclusive) {
 		return bookmarksListOptions{}, commandLineError("--max-results must be between 1 and 100")
 	}
 	if options.Timeout <= 0 {
@@ -170,9 +189,16 @@ func bookmarkTokenNeedsRefresh(expiresAt time.Time) bool {
 	return !expiresAt.After(timeNow().Add(bookmarkRefreshSkew))
 }
 
-func refreshBookmarkAccessToken(ctx context.Context, options bookmarksListOptions, current xoauth.Token) (xoauth.Token, error) {
+func refreshBookmarkAccessToken(
+	ctx context.Context,
+	options bookmarksListOptions,
+	current xoauth.Token,
+) (xoauth.Token, error) {
 	if options.ClientID == "" {
-		return xoauth.Token{}, commandLineError(fmt.Sprintf("client ID is required to refresh access token; set %s or pass --client-id", clientIDEnv))
+		return xoauth.Token{}, commandLineError(fmt.Sprintf(
+			"client ID is required to refresh access token; set %s or pass --client-id",
+			clientIDEnv,
+		))
 	}
 	if current.RefreshToken == "" {
 		return xoauth.Token{}, errors.New("refresh token is required to refresh access token")

@@ -3,12 +3,16 @@ package xapi
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 )
+
+const userMeJSON = `{"data":{"id":"2244994945","name":"X Dev",` +
+	`"username":"TwitterDev"}}`
 
 func TestDoAttachesBearerToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +32,9 @@ func TestDoAttachesBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do() error = %v", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatalf("StatusCode = %d, want 204", response.StatusCode)
@@ -43,7 +49,12 @@ func TestDoHTTPErrorIncludesStatusPathAndBody(t *testing.T) {
 
 	client := &Client{AccessToken: "access-123", BaseURL: server.URL, HTTPClient: server.Client()}
 
-	_, err := client.Do(context.Background(), http.MethodGet, "/2/users/me", nil)
+	response, err := client.Do(context.Background(), http.MethodGet, "/2/users/me", nil)
+	if response != nil {
+		defer func() {
+			_ = response.Body.Close()
+		}()
+	}
 	if err == nil {
 		t.Fatal("Do() error = nil, want error")
 	}
@@ -57,32 +68,40 @@ func TestDoHTTPErrorIncludesStatusPathAndBody(t *testing.T) {
 }
 
 func TestDoRejectsAbsoluteAndSchemeRelativePathsBeforeRequest(t *testing.T) {
-	var safeServerRequests int32
+	var safeServerRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&safeServerRequests, 1)
+		safeServerRequests.Add(1)
 	}))
 	defer server.Close()
 
-	var httpRequests int32
+	var httpRequests atomic.Int32
 	client := &Client{
 		AccessToken: "access-123",
 		BaseURL:     server.URL,
-		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			atomic.AddInt32(&httpRequests, 1)
-			return nil, fmt.Errorf("unexpected HTTP request to %s", r.URL)
-		})},
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				httpRequests.Add(1)
+				return nil, fmt.Errorf("unexpected HTTP request to %s", r.URL)
+			}),
+		},
 	}
 
 	for _, path := range []string{"https://example.test/2/users/me", "//example.test/2/users/me"} {
-		if _, err := client.Do(context.Background(), http.MethodGet, path, nil); err == nil {
+		response, err := client.Do(context.Background(), http.MethodGet, path, nil)
+		if response != nil {
+			defer func() {
+				_ = response.Body.Close()
+			}()
+		}
+		if err == nil {
 			t.Fatalf("Do(%q) error = nil, want rejection", path)
 		}
 	}
 
-	if got := atomic.LoadInt32(&httpRequests); got != 0 {
+	if got := httpRequests.Load(); got != 0 {
 		t.Fatalf("HTTP requests = %d, want 0", got)
 	}
-	if got := atomic.LoadInt32(&safeServerRequests); got != 0 {
+	if got := safeServerRequests.Load(); got != 0 {
 		t.Fatalf("safe server requests = %d, want 0", got)
 	}
 }
@@ -93,7 +112,7 @@ func TestMeDecodesAuthenticatedUser(t *testing.T) {
 			t.Fatalf("path = %q, want /2/users/me", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+		writeTestResponse(t, w, userMeJSON)
 	}))
 	defer server.Close()
 
@@ -137,7 +156,7 @@ func TestBookmarksRawSendsExpectedQueryAndReturnsRawJSON(t *testing.T) {
 		assertQueryValue(t, query, "place.fields", "full_name")
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, rawResponse)
+		writeTestResponse(t, w, rawResponse)
 	}))
 	defer server.Close()
 
@@ -166,14 +185,26 @@ func TestBookmarksRawOmitsEmptyOptionalQueryParameters(t *testing.T) {
 		if got := r.URL.RawQuery; got != "" {
 			t.Fatalf("RawQuery = %q, want empty", got)
 		}
-		fmt.Fprint(w, `{"data":[]}`)
+		writeTestResponse(t, w, `{"data":[]}`)
 	}))
 	defer server.Close()
 
 	client := &Client{AccessToken: "access-123", BaseURL: server.URL, HTTPClient: server.Client()}
 
-	if _, err := client.BookmarksRaw(context.Background(), "2244994945", BookmarkOptions{}); err != nil {
+	if _, err := client.BookmarksRaw(
+		context.Background(),
+		"2244994945",
+		BookmarkOptions{},
+	); err != nil {
 		t.Fatalf("BookmarksRaw() error = %v", err)
+	}
+}
+
+func writeTestResponse(t *testing.T, w io.Writer, body string) {
+	t.Helper()
+
+	if _, err := fmt.Fprint(w, body); err != nil {
+		t.Fatalf("Fprint(response) error = %v", err)
 	}
 }
 

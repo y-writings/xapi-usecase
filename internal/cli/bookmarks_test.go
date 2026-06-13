@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,6 +16,20 @@ import (
 	"github.com/y-writings/xapi-usecase/internal/tokenstore"
 	"github.com/y-writings/xapi-usecase/internal/xapi"
 	"github.com/y-writings/xapi-usecase/internal/xoauth"
+)
+
+const (
+	userMeJSON = `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`
+
+	emptyBookmarksJSON = `{"data":[],"meta":{"result_count":0}}`
+
+	bookmarkWithOnePostJSON = `{"data":[{"id":"1501258597237342208","text":"hello"}],` +
+		`"meta":{"result_count":1}}`
+
+	newAccessTokenJSON = `{"access_token":"new-access","refresh_token":"new-refresh",` +
+		`"token_type":"bearer",` +
+		`"scope":"tweet.read users.read bookmark.read offline.access",` +
+		`"expires_in":3600}`
 )
 
 func TestRunPrintsTopLevelHelp(t *testing.T) {
@@ -40,7 +55,13 @@ func TestRunPrintsAuthLoginHelp(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := Run(context.Background(), []string{"auth", "login", "--help"}, &stdout, &stderr, getenvNone)
+	code := Run(
+		context.Background(),
+		[]string{"auth", "login", "--help"},
+		&stdout,
+		&stderr,
+		getenvNone,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -57,7 +78,13 @@ func TestRunPrintsBookmarksListHelp(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := Run(context.Background(), []string{"bookmarks", "list", "--help"}, &stdout, &stderr, getenvNone)
+	code := Run(
+		context.Background(),
+		[]string{"bookmarks", "list", "--help"},
+		&stdout,
+		&stderr,
+		getenvNone,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -90,14 +117,14 @@ func TestBookmarksListPrintsPrettyJSONForUnexpiredToken(t *testing.T) {
 		case "/2/users/me":
 			assertAuthorization(t, r, "Bearer access-123")
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
 			assertAuthorization(t, r, "Bearer access-123")
 			if got := r.URL.Query().Get("tweet.fields"); got != "created_at,author_id" {
 				t.Fatalf("tweet.fields = %q, want created_at,author_id", got)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"data":[{"id":"1501258597237342208","text":"hello"}],"meta":{"result_count":1}}`)
+			writeResponse(t, w, bookmarkWithOnePostJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -105,7 +132,11 @@ func TestBookmarksListPrintsPrettyJSONForUnexpiredToken(t *testing.T) {
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, stdout, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile}, getenvNone)
+	code, stdout, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile},
+		getenvNone,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, stderr)
@@ -113,7 +144,18 @@ func TestBookmarksListPrintsPrettyJSONForUnexpiredToken(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	want := "{\n  \"data\": [\n    {\n      \"id\": \"1501258597237342208\",\n      \"text\": \"hello\"\n    }\n  ],\n  \"meta\": {\n    \"result_count\": 1\n  }\n}\n"
+	want := `{
+  "data": [
+    {
+      "id": "1501258597237342208",
+      "text": "hello"
+    }
+  ],
+  "meta": {
+    "result_count": 1
+  }
+}
+`
 	if stdout != want {
 		t.Fatalf("stdout = %q, want %q", stdout, want)
 	}
@@ -122,7 +164,11 @@ func TestBookmarksListPrintsPrettyJSONForUnexpiredToken(t *testing.T) {
 func TestBookmarksListRejectsInvalidMaxResults(t *testing.T) {
 	for _, value := range []string{"0", "101"} {
 		t.Run(value, func(t *testing.T) {
-			code, _, stderr := runBookmarksListForTest(t, []string{"--max-results", value}, getenvNone)
+			code, _, stderr := runBookmarksListForTest(
+				t,
+				[]string{"--max-results", value},
+				getenvNone,
+			)
 
 			if code != 2 {
 				t.Fatalf("code = %d, want 2", code)
@@ -137,19 +183,22 @@ func TestBookmarksListRejectsInvalidMaxResults(t *testing.T) {
 func TestBookmarksListAcceptsMinimumMaxResults(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "access-123", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken: "access-123",
+		ExpiresAt:   fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/2/users/me":
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
 			if got := r.URL.Query().Get("max_results"); got != "1" {
 				t.Fatalf("max_results = %q, want 1", got)
 			}
-			fmt.Fprint(w, `{"data":[],"meta":{"result_count":0}}`)
+			writeResponse(t, w, emptyBookmarksJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -157,7 +206,11 @@ func TestBookmarksListAcceptsMinimumMaxResults(t *testing.T) {
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, _, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile, "--max-results", "1"}, getenvNone)
+	code, _, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile, "--max-results", "1"},
+		getenvNone,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, stderr)
@@ -167,14 +220,17 @@ func TestBookmarksListAcceptsMinimumMaxResults(t *testing.T) {
 func TestBookmarksListSendsCustomQueryFlags(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "access-123", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken: "access-123",
+		ExpiresAt:   fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/2/users/me":
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
 			query := r.URL.Query()
 			for key, want := range map[string]string{
@@ -191,7 +247,7 @@ func TestBookmarksListSendsCustomQueryFlags(t *testing.T) {
 					t.Fatalf("query[%s] = %q, want %q", key, got, want)
 				}
 			}
-			fmt.Fprint(w, `{"data":[],"meta":{"result_count":0}}`)
+			writeResponse(t, w, emptyBookmarksJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -241,13 +297,13 @@ func TestBookmarksListRefreshesTokenExpiringWithinFiveMinutes(t *testing.T) {
 			if got := r.Form.Get("refresh_token"); got != "old-refresh" {
 				t.Fatalf("refresh_token = %q, want old-refresh", got)
 			}
-			fmt.Fprint(w, `{"access_token":"new-access","refresh_token":"new-refresh","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":3600}`)
+			writeResponse(t, w, newAccessTokenJSON)
 		case "/2/users/me":
 			assertAuthorization(t, r, "Bearer new-access")
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
 			assertAuthorization(t, r, "Bearer new-access")
-			fmt.Fprint(w, `{"data":[],"meta":{"result_count":0}}`)
+			writeResponse(t, w, emptyBookmarksJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -255,12 +311,11 @@ func TestBookmarksListRefreshesTokenExpiringWithinFiveMinutes(t *testing.T) {
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, _, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile}, func(key string) string {
-		if key == clientIDEnv {
-			return "client-123"
-		}
-		return ""
-	})
+	code, _, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile},
+		clientIDEnvGetter,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, stderr)
@@ -280,7 +335,11 @@ func TestBookmarksListRefreshesTokenExpiringWithinFiveMinutes(t *testing.T) {
 func TestBookmarksListRequiresClientIDOnlyWhenRefreshIsNeeded(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "old-access", RefreshToken: "old-refresh", ExpiresAt: fixedNow.Add(4 * time.Minute)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken:  "old-access",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    fixedNow.Add(4 * time.Minute),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -303,7 +362,11 @@ func TestBookmarksListRequiresClientIDOnlyWhenRefreshIsNeeded(t *testing.T) {
 func TestBookmarksListRefreshesAndRetriesMeAfterUnauthorized(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "old-access", RefreshToken: "old-refresh", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken:  "old-access",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 	meRequests := 0
@@ -318,12 +381,12 @@ func TestBookmarksListRefreshesAndRetriesMeAfterUnauthorized(t *testing.T) {
 				return
 			}
 			assertAuthorization(t, r, "Bearer new-access")
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/oauth2/token":
-			fmt.Fprint(w, `{"access_token":"new-access","refresh_token":"new-refresh","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":3600}`)
+			writeResponse(t, w, newAccessTokenJSON)
 		case "/2/users/2244994945/bookmarks":
 			assertAuthorization(t, r, "Bearer new-access")
-			fmt.Fprint(w, `{"data":[],"meta":{"result_count":0}}`)
+			writeResponse(t, w, emptyBookmarksJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -331,12 +394,11 @@ func TestBookmarksListRefreshesAndRetriesMeAfterUnauthorized(t *testing.T) {
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, _, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile}, func(key string) string {
-		if key == clientIDEnv {
-			return "client-123"
-		}
-		return ""
-	})
+	code, _, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile},
+		clientIDEnvGetter,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, stderr)
@@ -349,7 +411,11 @@ func TestBookmarksListRefreshesAndRetriesMeAfterUnauthorized(t *testing.T) {
 func TestBookmarksListRefreshesAndRetriesBookmarksAfterUnauthorized(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "old-access", RefreshToken: "old-refresh", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken:  "old-access",
+		RefreshToken: "old-refresh",
+		ExpiresAt:    fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 	bookmarkRequests := 0
@@ -358,7 +424,7 @@ func TestBookmarksListRefreshesAndRetriesBookmarksAfterUnauthorized(t *testing.T
 		switch r.URL.Path {
 		case "/2/users/me":
 			assertAuthorization(t, r, "Bearer old-access")
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
 			bookmarkRequests++
 			if bookmarkRequests == 1 {
@@ -367,9 +433,9 @@ func TestBookmarksListRefreshesAndRetriesBookmarksAfterUnauthorized(t *testing.T
 				return
 			}
 			assertAuthorization(t, r, "Bearer new-access")
-			fmt.Fprint(w, `{"data":[],"meta":{"result_count":0}}`)
+			writeResponse(t, w, emptyBookmarksJSON)
 		case "/2/oauth2/token":
-			fmt.Fprint(w, `{"access_token":"new-access","refresh_token":"new-refresh","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":3600}`)
+			writeResponse(t, w, newAccessTokenJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -377,12 +443,11 @@ func TestBookmarksListRefreshesAndRetriesBookmarksAfterUnauthorized(t *testing.T
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, _, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile}, func(key string) string {
-		if key == clientIDEnv {
-			return "client-123"
-		}
-		return ""
-	})
+	code, _, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile},
+		clientIDEnvGetter,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, stderr)
@@ -395,7 +460,11 @@ func TestBookmarksListRefreshesAndRetriesBookmarksAfterUnauthorized(t *testing.T
 func TestBookmarksListDoesNotRefreshOrRetryAfterForbidden(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "access-123", RefreshToken: "refresh-123", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken:  "access-123",
+		RefreshToken: "refresh-123",
+		ExpiresAt:    fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 	bookmarkRequests := 0
@@ -404,13 +473,13 @@ func TestBookmarksListDoesNotRefreshOrRetryAfterForbidden(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/2/users/me":
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
 			bookmarkRequests++
 			http.Error(w, `{"title":"Forbidden"}`, http.StatusForbidden)
 		case "/2/oauth2/token":
 			refreshRequests++
-			fmt.Fprint(w, `{"access_token":"new-access","refresh_token":"new-refresh","token_type":"bearer","scope":"tweet.read users.read bookmark.read offline.access","expires_in":3600}`)
+			writeResponse(t, w, newAccessTokenJSON)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -418,12 +487,11 @@ func TestBookmarksListDoesNotRefreshOrRetryAfterForbidden(t *testing.T) {
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, _, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile}, func(key string) string {
-		if key == clientIDEnv {
-			return "client-123"
-		}
-		return ""
-	})
+	code, _, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile},
+		clientIDEnvGetter,
+	)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
@@ -442,16 +510,19 @@ func TestBookmarksListDoesNotRefreshOrRetryAfterForbidden(t *testing.T) {
 func TestBookmarksListExitsZeroWhenSuccessfulJSONContainsErrors(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "access-123", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken: "access-123",
+		ExpiresAt:   fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/2/users/me":
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
-			fmt.Fprint(w, `{"errors":[{"title":"partial"}],"meta":{"result_count":0}}`)
+			writeResponse(t, w, `{"errors":[{"title":"partial"}],"meta":{"result_count":0}}`)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -459,7 +530,11 @@ func TestBookmarksListExitsZeroWhenSuccessfulJSONContainsErrors(t *testing.T) {
 	defer server.Close()
 	useTestClients(t, server, fixedNow)
 
-	code, stdout, stderr := runBookmarksListForTest(t, []string{"--token-file", tokenFile}, getenvNone)
+	code, stdout, stderr := runBookmarksListForTest(
+		t,
+		[]string{"--token-file", tokenFile},
+		getenvNone,
+	)
 
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, stderr)
@@ -472,16 +547,19 @@ func TestBookmarksListExitsZeroWhenSuccessfulJSONContainsErrors(t *testing.T) {
 func TestBookmarksListReturnsErrorForInvalidSuccessfulJSON(t *testing.T) {
 	fixedNow := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
 	tokenFile := filepath.Join(t.TempDir(), "token.json")
-	if err := tokenstore.Save(tokenFile, xoauth.Token{AccessToken: "access-123", ExpiresAt: fixedNow.Add(time.Hour)}); err != nil {
+	if err := tokenstore.Save(tokenFile, xoauth.Token{
+		AccessToken: "access-123",
+		ExpiresAt:   fixedNow.Add(time.Hour),
+	}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/2/users/me":
-			fmt.Fprint(w, `{"data":{"id":"2244994945","name":"X Dev","username":"TwitterDev"}}`)
+			writeResponse(t, w, userMeJSON)
 		case "/2/users/2244994945/bookmarks":
-			fmt.Fprint(w, `not-json`)
+			writeResponse(t, w, `not-json`)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -542,8 +620,27 @@ func useTestClients(t *testing.T, server *httptest.Server, fixedNow time.Time) {
 		}
 	}
 	newXAPIClient = func(accessToken string) *xapi.Client {
-		return &xapi.Client{AccessToken: accessToken, BaseURL: server.URL, HTTPClient: server.Client()}
+		return &xapi.Client{
+			AccessToken: accessToken,
+			BaseURL:     server.URL,
+			HTTPClient:  server.Client(),
+		}
 	}
+}
+
+func writeResponse(t *testing.T, w io.Writer, body string) {
+	t.Helper()
+
+	if _, err := fmt.Fprint(w, body); err != nil {
+		t.Fatalf("Fprint(response) error = %v", err)
+	}
+}
+
+func clientIDEnvGetter(key string) string {
+	if key == clientIDEnv {
+		return "client-123"
+	}
+	return ""
 }
 
 func assertAuthorization(t *testing.T, r *http.Request, want string) {

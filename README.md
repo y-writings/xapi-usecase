@@ -7,9 +7,22 @@ release.
 ## Requirements
 
 - Go 1.26.3
+- golangci-lint 2.12.2 for development checks
 - Approved X Developer account and X Developer App
 
-For mise users, `.mise/config.toml` declares Go 1.26.3 for this project.
+For mise users, `.mise/config.toml` declares Go 1.26.3 and golangci-lint
+2.12.2 for this project.
+
+## Development Checks
+
+```sh
+mise run fmt
+mise run fmt:check
+mise run lint
+mise run modernize
+mise run test
+mise run check
+```
 
 ## X Developer Console Setup
 
@@ -18,7 +31,8 @@ Configure your X Developer App before running the CLI:
 1. Enable OAuth 2.0.
 2. Configure the app as a public/native client for this CLI flow.
 3. Register the callback URL exactly as `http://127.0.0.1:8765/callback`.
-4. If you run login with another `--port`, register the matching callback URL, such as `http://127.0.0.1:<port>/callback`.
+4. If you run login with another `--port`, register the matching callback URL,
+   such as `http://127.0.0.1:<port>/callback`.
 5. Enable these scopes: `tweet.read`, `users.read`, `bookmark.read`, `offline.access`.
 6. Copy the OAuth2 Client ID.
 
@@ -105,11 +119,14 @@ go run ./cmd/xapi-usecase bookmarks list \
 
 ## Bookmark Options
 
-- `--token-file`: Path where the OAuth2 token JSON file is read and updated after refresh.
-- `--client-id`: OAuth2 Client ID. Only required when the saved access token must be refreshed. Overrides `XAPI_USECASE_CLIENT_ID`.
+- `--token-file`: Path where the OAuth2 token JSON file is read and updated after
+  refresh.
+- `--client-id`: OAuth2 Client ID. Only required when the saved access token must be
+  refreshed. Overrides `XAPI_USECASE_CLIENT_ID`.
 - `--max-results`: Results per page, from `1` through `100`.
 - `--pagination-token`: Page token from `meta.next_token`.
-- `--tweet-fields`: Comma-separated `tweet.fields`. Defaults to `created_at,author_id`.
+- `--tweet-fields`: Comma-separated `tweet.fields`. Defaults to
+  `created_at,author_id`.
 - `--expansions`: Comma-separated expansions.
 - `--user-fields`: Comma-separated `user.fields`.
 - `--media-fields`: Comma-separated `media.fields`.

@@ -54,7 +54,12 @@ type BookmarkOptions struct {
 	PlaceFields     string
 }
 
-func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+func (c *Client) Do(
+	ctx context.Context,
+	method string,
+	path string,
+	body io.Reader,
+) (*http.Response, error) {
 	requestURL, err := c.resolveURL(path)
 	if err != nil {
 		return nil, err
@@ -75,7 +80,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader) (*
 		return response, nil
 	}
 
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	bodyBytes, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
 	if err != nil {
 		return nil, err
@@ -94,7 +101,9 @@ func (c *Client) Me(ctx context.Context) (MeResponse, error) {
 	if err != nil {
 		return MeResponse{}, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	var me MeResponse
 	if err := json.NewDecoder(response.Body).Decode(&me); err != nil {
@@ -104,7 +113,11 @@ func (c *Client) Me(ctx context.Context) (MeResponse, error) {
 	return me, nil
 }
 
-func (c *Client) BookmarksRaw(ctx context.Context, userID string, options BookmarkOptions) ([]byte, error) {
+func (c *Client) BookmarksRaw(
+	ctx context.Context,
+	userID string,
+	options BookmarkOptions,
+) ([]byte, error) {
 	if userID == "" {
 		return nil, errors.New("user ID is required")
 	}
@@ -144,7 +157,9 @@ func (c *Client) BookmarksRaw(ctx context.Context, userID string, options Bookma
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	return io.ReadAll(response.Body)
 }
@@ -160,7 +175,7 @@ func (c *Client) resolveURL(path string) (string, error) {
 		return "", err
 	}
 	if pathURL.IsAbs() || strings.HasPrefix(path, "//") {
-		return "", fmt.Errorf("X API path must be relative to base URL: %s", path)
+		return "", fmt.Errorf("x API path must be relative to base URL: %s", path)
 	}
 
 	return baseURL.ResolveReference(pathURL).String(), nil

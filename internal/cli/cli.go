@@ -33,7 +33,13 @@ func (e commandLineError) Error() string {
 
 var errHelpRequested = errors.New("help requested")
 
-func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, getenv getenvFunc) int {
+func Run(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	getenv getenvFunc,
+) int {
 	if len(args) == 1 && args[0] == "--help" {
 		printUsage(stdout)
 		return 0
@@ -58,7 +64,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 		if errors.Is(err, errHelpRequested) {
 			return 0
 		}
-		fmt.Fprintf(stderr, "Error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		var commandLine commandLineError
 		if errors.As(err, &commandLine) {
 			return 2
@@ -69,7 +75,13 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	return 0
 }
 
-func authLogin(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, getenv getenvFunc) error {
+func authLogin(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	getenv getenvFunc,
+) error {
 	clientID := getenv(clientIDEnv)
 	tokenFile := ""
 	port := defaultCallbackPort
@@ -95,7 +107,10 @@ func authLogin(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 		return commandLineError(fmt.Sprintf("unexpected argument: %s", flags.Arg(0)))
 	}
 	if clientID == "" {
-		return commandLineError(fmt.Sprintf("client ID is required; set %s or pass --client-id", clientIDEnv))
+		return commandLineError(fmt.Sprintf(
+			"client ID is required; set %s or pass --client-id",
+			clientIDEnv,
+		))
 	}
 	if port < 1 || port > 65535 {
 		return commandLineError("--port must be between 1 and 65535")
@@ -176,7 +191,12 @@ func authLogin(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 	return nil
 }
 
-func waitForCallback(ctx context.Context, timeout time.Duration, results <-chan callbackResult, serverErrors <-chan error) (callbackResult, error) {
+func waitForCallback(
+	ctx context.Context,
+	timeout time.Duration,
+	results <-chan callbackResult,
+	serverErrors <-chan error,
+) (callbackResult, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
@@ -188,7 +208,10 @@ func waitForCallback(ctx context.Context, timeout time.Duration, results <-chan 
 	case <-ctx.Done():
 		return callbackResult{}, ctx.Err()
 	case <-timer.C:
-		return callbackResult{}, fmt.Errorf("timed out waiting for OAuth callback after %s", timeout)
+		return callbackResult{}, fmt.Errorf(
+			"timed out waiting for OAuth callback after %s",
+			timeout,
+		)
 	}
 }
 
@@ -199,38 +222,53 @@ func shutdownServer(server *http.Server) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  xapi-usecase auth login [--client-id CLIENT_ID] [--token-file PATH] [--port PORT] [--timeout DURATION]")
-	fmt.Fprintln(w, "  xapi-usecase bookmarks list [--token-file PATH] [--max-results N] [--pagination-token TOKEN]")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Run a command with --help for command-specific options.")
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  xapi-usecase auth login [options]")
+	_, _ = fmt.Fprintln(w, "  xapi-usecase bookmarks list [options]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Run a command with --help for command-specific options.")
 }
 
 func printAuthLoginUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  xapi-usecase auth login [--client-id CLIENT_ID] [--token-file PATH] [--port PORT] [--timeout DURATION]")
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Environment:\n  %s  OAuth2 client ID used when --client-id is omitted\n", clientIDEnv)
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  xapi-usecase auth login [options]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Options:")
+	_, _ = fmt.Fprintln(w, "  --client-id CLIENT_ID       OAuth2 client ID")
+	_, _ = fmt.Fprintln(w, "  --token-file PATH           path to save the OAuth2 token")
+	_, _ = fmt.Fprintln(w, "  --port PORT                 local callback port")
+	_, _ = fmt.Fprintln(w, "  --timeout DURATION          browser callback timeout")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(
+		w,
+		"Environment:\n  %s  OAuth2 client ID used when --client-id is omitted\n",
+		clientIDEnv,
+	)
 }
 
 func printBookmarksListUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  xapi-usecase bookmarks list [options]")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Options:")
-	fmt.Fprintln(w, "  --token-file PATH           OAuth2 token JSON file")
-	fmt.Fprintln(w, "  --client-id CLIENT_ID       OAuth2 client ID used only when refresh is needed")
-	fmt.Fprintln(w, "  --max-results N             results per page, 1 through 100")
-	fmt.Fprintln(w, "  --pagination-token TOKEN    page token from meta.next_token")
-	fmt.Fprintln(w, "  --tweet-fields FIELDS       comma-separated tweet.fields, defaults to created_at,author_id")
-	fmt.Fprintln(w, "  --expansions EXPANSIONS     comma-separated expansions")
-	fmt.Fprintln(w, "  --user-fields FIELDS        comma-separated user.fields")
-	fmt.Fprintln(w, "  --media-fields FIELDS       comma-separated media.fields")
-	fmt.Fprintln(w, "  --poll-fields FIELDS        comma-separated poll.fields")
-	fmt.Fprintln(w, "  --place-fields FIELDS       comma-separated place.fields")
-	fmt.Fprintln(w, "  --timeout DURATION          command timeout, defaults to 30s")
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Environment:\n  %s  OAuth2 client ID used for refresh when --client-id is omitted\n", clientIDEnv)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Required scopes: bookmark.read, tweet.read, users.read. offline.access is required for refresh.")
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  xapi-usecase bookmarks list [options]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Options:")
+	_, _ = fmt.Fprintln(w, "  --token-file PATH           OAuth2 token JSON file")
+	_, _ = fmt.Fprintln(w, "  --client-id CLIENT_ID       OAuth2 client ID for refresh")
+	_, _ = fmt.Fprintln(w, "  --max-results N             results per page, 1 through 100")
+	_, _ = fmt.Fprintln(w, "  --pagination-token TOKEN    page token from meta.next_token")
+	_, _ = fmt.Fprintln(w, "  --tweet-fields FIELDS       comma-separated tweet.fields")
+	_, _ = fmt.Fprintln(w, "  --expansions EXPANSIONS     comma-separated expansions")
+	_, _ = fmt.Fprintln(w, "  --user-fields FIELDS        comma-separated user.fields")
+	_, _ = fmt.Fprintln(w, "  --media-fields FIELDS       comma-separated media.fields")
+	_, _ = fmt.Fprintln(w, "  --poll-fields FIELDS        comma-separated poll.fields")
+	_, _ = fmt.Fprintln(w, "  --place-fields FIELDS       comma-separated place.fields")
+	_, _ = fmt.Fprintln(w, "  --timeout DURATION          command timeout, defaults to 30s")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(
+		w,
+		"Environment:\n  %s  OAuth2 client ID used for refresh when --client-id is omitted\n",
+		clientIDEnv,
+	)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Required scopes: bookmark.read, tweet.read, users.read.")
+	_, _ = fmt.Fprintln(w, "offline.access is required for refresh.")
 }
