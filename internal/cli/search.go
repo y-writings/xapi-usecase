@@ -20,6 +20,7 @@ const bearerTokenEnv = "XAPI_USECASE_BEARER_TOKEN"
 
 type searchOptions struct {
 	Query, Language, StartTime, EndTime, Output, BearerToken string
+	ClientID, TokenFile                                      string
 	Limit                                                    int
 	Timeout                                                  time.Duration
 }
@@ -52,7 +53,10 @@ type source struct {
 }
 
 func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv getenvFunc) error {
-	o := searchOptions{Limit: 100, Timeout: 30 * time.Second, BearerToken: getenv(bearerTokenEnv)}
+	o := searchOptions{
+		Limit: 100, Timeout: 30 * time.Second,
+		BearerToken: getenv(bearerTokenEnv), ClientID: getenv(clientIDEnv),
+	}
 	f := flag.NewFlagSet("xapi-usecase search", flag.ContinueOnError)
 	f.SetOutput(io.Discard)
 	f.StringVar(&o.Query, "query", "", "X search query")
@@ -62,6 +66,8 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 	f.IntVar(&o.Limit, "limit", o.Limit, "maximum posts to retrieve")
 	f.StringVar(&o.Output, "output", "", "JSON output file")
 	f.StringVar(&o.BearerToken, "bearer-token", o.BearerToken, "X API bearer token")
+	f.StringVar(&o.TokenFile, "token-file", "", "OAuth2 token JSON file")
+	f.StringVar(&o.ClientID, "client-id", o.ClientID, "OAuth2 client ID for refresh")
 	f.DurationVar(&o.Timeout, "timeout", o.Timeout, "command timeout")
 	if err := f.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -73,11 +79,6 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 	}
 	if f.NArg() > 0 || o.Query == "" {
 		return commandLineError("--query is required and positional arguments are not accepted")
-	}
-	if o.BearerToken == "" {
-		return commandLineError(
-			"bearer token is required; set " + bearerTokenEnv + " or pass --bearer-token",
-		)
 	}
 	if o.Limit < 1 || o.Limit > 1000 {
 		return commandLineError("--limit must be between 1 and 1000")
@@ -99,7 +100,10 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
-	client := newXAPIClient(o.BearerToken)
+	client, err := newAuthenticatedClient(commandCtx, o.TokenFile, o.ClientID, o.BearerToken)
+	if err != nil {
+		return err
+	}
 	out := searchOutput{
 		Status: "complete",
 		Search: searchConditions{
@@ -116,9 +120,14 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 		pageSize := o.Limit - out.PostCount
 		pageSize = max(pageSize, 10)
 		pageSize = min(pageSize, 100)
-		page, err := client.SearchRecent(commandCtx, xapi.SearchOptions{
-			Query: query, StartTime: o.StartTime, EndTime: o.EndTime,
-			NextToken: next, MaxResults: pageSize,
+		var page xapi.SearchResponse
+		err := client.run(func(api *xapi.Client) error {
+			var err error
+			page, err = api.SearchRecent(commandCtx, xapi.SearchOptions{
+				Query: query, StartTime: o.StartTime, EndTime: o.EndTime,
+				NextToken: next, MaxResults: pageSize,
+			})
+			return err
 		})
 		if err != nil {
 			out.Status = "incomplete"
@@ -272,7 +281,14 @@ func printSearchUsage(w io.Writer) {
 		"  --limit N               maximum posts (1-1000; default 100)",
 		"  --output PATH           save JSON to file",
 		"  --bearer-token TOKEN    X API bearer token",
+		"  --token-file PATH       OAuth2 token JSON file (defaults to the saved login)",
+		"  --client-id CLIENT_ID   OAuth2 client ID for refresh",
 		"  --timeout DURATION      command timeout",
+		"", "Authentication:",
+		"  Uses the token saved by auth login unless a bearer token is provided.",
+		"  --bearer-token overrides XAPI_USECASE_BEARER_TOKEN and the saved token.",
+		"  --client-id overrides XAPI_USECASE_CLIENT_ID; required only for refresh.",
+		"  Required scopes: tweet.read, users.read; offline.access for refresh.",
 	}
 	_, _ = fmt.Fprintln(w, strings.Join(lines, "\n"))
 }

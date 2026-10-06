@@ -20,8 +20,7 @@ Before running the CLI, configure an approved X Developer App:
 - Enable these scopes: `tweet.read`, `users.read`, `bookmark.read`, `offline.access`.
 - Copy the OAuth2 Client ID.
 
-The `search` command uses an app bearer token instead of the saved OAuth token. Set
-`XAPI_USECASE_BEARER_TOKEN` or pass `--bearer-token`.
+Both `bookmarks list` and `search` use the OAuth token saved by `auth login`.
 
 The CLI does not use or store a client secret.
 
@@ -38,14 +37,27 @@ go run ./cmd/xapi-usecase bookmarks list
 ## Search external resources
 
 Search recent X posts, extract their expanded external URLs (including long-form
-post URLs), deduplicate resources and source posts, and retain provenance:
+post URLs), deduplicate resources and source posts, and retain provenance. After
+running `auth login`:
 
 ```sh
-export XAPI_USECASE_BEARER_TOKEN="your-bearer-token"
 go run ./cmd/xapi-usecase search \
   --query '業務ドメイン 知識共有' --lang ja --limit 200 \
   --start-time 2026-10-01T00:00:00Z --output results.json
 ```
+
+Search uses the saved OAuth token by default. Use `--token-file` to select a
+different token file. Tokens expiring within five minutes are refreshed before
+search starts; a `401 Unauthorized` response triggers one refresh and one retry
+of that page. Refreshed tokens are saved to the same file. Refresh requires
+`--client-id` or `XAPI_USECASE_CLIENT_ID`; a valid token can be used without a
+client ID. Search requires `tweet.read` and `users.read`, with `offline.access`
+for refresh. `auth login` already requests these scopes.
+
+For app bearer authentication, pass `--bearer-token` or set
+`XAPI_USECASE_BEARER_TOKEN`. A non-empty bearer token takes precedence over the
+saved OAuth token, and the flag overrides the environment variable. Explicit
+bearer tokens are not refreshed, and failures do not fall back to the saved token.
 
 `--query` accepts any X search expression. `--lang` adds an X language operator;
 `--start-time` and `--end-time` are RFC 3339 timestamps. The CLI pages until
@@ -68,6 +80,8 @@ also `incomplete` with reason `api_error`; usable data from that response is
 included, and pagination stops. It exits non-zero so partial output cannot be
 mistaken for a successful run. A successful zero-result search has
 `status: "complete"`, zero counts, and an empty `resources` array.
+If token refresh fails after collection starts, the collected resources are
+emitted with `status: "incomplete"` and reason `request_failed`.
 
 Example (abbreviated):
 

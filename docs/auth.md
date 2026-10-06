@@ -58,4 +58,12 @@ The token file does not contain:
 - `code_verifier`
 - `state`
 
-After authentication, use [`bookmarks list`](bookmarks.md) to retrieve bookmarked Posts.
+After authentication, use [`bookmarks list`](bookmarks.md) to retrieve bookmarked
+Posts or [`search`](../README.md#search-external-resources) to find external
+resources in recent Posts. Both commands read this token file by default, or the
+file selected with `--token-file`.
+
+Both commands refresh tokens expiring within five minutes and retry a failed
+request once after `401 Unauthorized`. Refresh requires `offline.access` and
+`--client-id` or `XAPI_USECASE_CLIENT_ID`; the refreshed token is saved back to the
+same file. A valid access token can be used without a client ID.
