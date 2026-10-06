@@ -37,8 +37,8 @@ go run ./cmd/xapi-usecase bookmarks list
 
 ## Search external resources
 
-Search recent X posts, extract their expanded external URLs, deduplicate resources,
-and retain every source post:
+Search recent X posts, extract their expanded external URLs (including long-form
+post URLs), deduplicate resources and source posts, and retain provenance:
 
 ```sh
 export XAPI_USECASE_BEARER_TOKEN="your-bearer-token"
@@ -50,6 +50,7 @@ go run ./cmd/xapi-usecase search \
 `--query` accepts any X search expression. `--lang` adds an X language operator;
 `--start-time` and `--end-time` are RFC 3339 timestamps. The CLI pages until
 `--limit` posts (maximum 1,000) have been examined or the API has no next page.
+Each resource lists a source post at most once, even if that post repeats the URL.
 Only HTTP(S) links outside `x.com` and `twitter.com` are collected. Expanded or
 unwound destinations supplied by X are preferred, while the original shortened URL
 is retained on each source.
@@ -57,9 +58,11 @@ is retained on each source.
 The command always emits a JSON document when an API request fails after collection
 starts. `status` is then `incomplete`, and `incomplete_reason` distinguishes
 `authentication_or_access_denied`, `rate_limited`, `api_error`, and
-`request_failed`. It exits non-zero so partial output cannot be mistaken for a
-successful run. A successful zero-result search has `status: "complete"`, zero
-counts, and an empty `resources` array.
+`request_failed`. An HTTP 200 response containing both `data` and `errors` is
+also `incomplete` with reason `api_error`; usable data from that response is
+included, and pagination stops. It exits non-zero so partial output cannot be
+mistaken for a successful run. A successful zero-result search has
+`status: "complete"`, zero counts, and an empty `resources` array.
 
 Example (abbreviated):
 

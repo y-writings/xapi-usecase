@@ -60,17 +60,31 @@ type SearchOptions struct {
 }
 
 type SearchResponse struct {
-	Data []Tweet    `json:"data"`
-	Meta SearchMeta `json:"meta"`
+	Data   []Tweet       `json:"data"`
+	Errors []SearchError `json:"errors,omitempty"`
+	Meta   SearchMeta    `json:"meta"`
 }
 
 type Tweet struct {
-	ID        string `json:"id"`
-	Text      string `json:"text"`
-	CreatedAt string `json:"created_at"`
-	Entities  struct {
-		URLs []TweetURL `json:"urls"`
-	} `json:"entities"`
+	ID        string        `json:"id"`
+	Text      string        `json:"text"`
+	CreatedAt string        `json:"created_at"`
+	Entities  TweetEntities `json:"entities"`
+	NotePost  *NotePost     `json:"note_post,omitempty"`
+}
+
+type TweetEntities struct {
+	URLs []TweetURL `json:"urls"`
+}
+
+type NotePost struct {
+	Text     string        `json:"text"`
+	Entities TweetEntities `json:"entities"`
+}
+
+type SearchError struct {
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
 }
 
 type TweetURL struct {
@@ -88,7 +102,7 @@ func (c *Client) SearchRecent(ctx context.Context, options SearchOptions) (Searc
 	query := url.Values{}
 	query.Set("query", options.Query)
 	query.Set("max_results", fmt.Sprintf("%d", options.MaxResults))
-	query.Set("tweet.fields", "created_at,entities")
+	query.Set("post.fields", "created_at,entities,note_post")
 	if options.StartTime != "" {
 		query.Set("start_time", options.StartTime)
 	}

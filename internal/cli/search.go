@@ -110,6 +110,7 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 		Resources:   []resource{},
 	}
 	byURL := map[string]int{}
+	sourcePostsByURL := map[string]map[string]struct{}{}
 	next := ""
 	for out.PostCount < o.Limit {
 		pageSize := o.Limit - out.PostCount
@@ -132,7 +133,15 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 				break
 			}
 			out.PostCount++
-			for _, link := range tweet.Entities.URLs {
+			postText := tweet.Text
+			urls := append([]xapi.TweetURL(nil), tweet.Entities.URLs...)
+			if tweet.NotePost != nil {
+				if tweet.NotePost.Text != "" {
+					postText = tweet.NotePost.Text
+				}
+				urls = append(urls, tweet.NotePost.Entities.URLs...)
+			}
+			for _, link := range urls {
 				target := link.UnwoundURL
 				if target == "" {
 					target = link.ExpandedURL
@@ -143,7 +152,7 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 				}
 				s := source{
 					PostID: tweet.ID, PostURL: "https://x.com/i/status/" + tweet.ID,
-					Text: tweet.Text, CreatedAt: tweet.CreatedAt, ShortURL: link.URL,
+					Text: postText, CreatedAt: tweet.CreatedAt, ShortURL: link.URL,
 				}
 				idx, exists := byURL[canonical]
 				if !exists {
@@ -153,8 +162,28 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 						URL: canonical, Sources: []source{},
 					})
 				}
+				sourcePosts := sourcePostsByURL[canonical]
+				if sourcePosts == nil {
+					sourcePosts = map[string]struct{}{}
+					sourcePostsByURL[canonical] = sourcePosts
+				}
+				if _, exists := sourcePosts[tweet.ID]; exists {
+					continue
+				}
+				sourcePosts[tweet.ID] = struct{}{}
 				out.Resources[idx].Sources = append(out.Resources[idx].Sources, s)
 			}
+		}
+		if len(page.Errors) > 0 {
+			out.Status = "incomplete"
+			out.IncompleteReason = "api_error"
+			if writeErr := writeSearchOutput(o.Output, stdout, out); writeErr != nil {
+				return writeErr
+			}
+			return fmt.Errorf(
+				"search incomplete: api_error: response contained %d API errors",
+				len(page.Errors),
+			)
 		}
 		next = page.Meta.NextToken
 		if next == "" {
