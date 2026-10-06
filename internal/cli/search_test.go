@@ -26,8 +26,8 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 		writeResponse(t, w, `{"data":[`+
 			`{"id":"1","text":"first","created_at":"2026-10-01T00:00:00Z",`+
 			`"entities":{"urls":[{"url":"https://t.co/a",`+
-			`"expanded_url":"https://example.com/article#part"},{"url":"https://t.co/a-duplicate",`+
-			`"expanded_url":"https://example.com/article#part"},{"url":"https://t.co/x",`+
+			`"expanded_url":"https://Example.com/article#part"},{"url":"https://t.co/a-duplicate",`+
+			`"expanded_url":"https://example.com/article"},{"url":"https://t.co/x",`+
 			`"expanded_url":"https://x.com/user/status/2"}]}},`+
 			`{"id":"2","text":"second","created_at":"2026-10-02T00:00:00Z",`+
 			`"entities":{"urls":[{"url":"https://t.co/b",`+
@@ -60,6 +60,9 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 	}
 	if strings.Contains(out.Resources[0].URL, "#") {
 		t.Fatalf("fragment not removed: %s", out.Resources[0].URL)
+	}
+	if out.Resources[0].URL != "https://example.com/article" {
+		t.Fatalf("resource URL = %q, want lowercase host", out.Resources[0].URL)
 	}
 }
 

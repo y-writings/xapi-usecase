@@ -205,6 +205,7 @@ func externalURL(raw string) (string, bool) {
 	if isX || isTwitter {
 		return "", false
 	}
+	u.Host = strings.ToLower(u.Host)
 	u.Fragment = ""
 	return u.String(), true
 }
