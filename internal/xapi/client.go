@@ -54,6 +54,62 @@ type BookmarkOptions struct {
 	PlaceFields     string
 }
 
+type SearchOptions struct {
+	Query, StartTime, EndTime, NextToken string
+	MaxResults                           int
+}
+
+type SearchResponse struct {
+	Data []Tweet    `json:"data"`
+	Meta SearchMeta `json:"meta"`
+}
+
+type Tweet struct {
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	CreatedAt string `json:"created_at"`
+	Entities  struct {
+		URLs []TweetURL `json:"urls"`
+	} `json:"entities"`
+}
+
+type TweetURL struct {
+	URL         string `json:"url"`
+	ExpandedURL string `json:"expanded_url"`
+	UnwoundURL  string `json:"unwound_url,omitempty"`
+}
+
+type SearchMeta struct {
+	ResultCount int    `json:"result_count"`
+	NextToken   string `json:"next_token,omitempty"`
+}
+
+func (c *Client) SearchRecent(ctx context.Context, options SearchOptions) (SearchResponse, error) {
+	query := url.Values{}
+	query.Set("query", options.Query)
+	query.Set("max_results", fmt.Sprintf("%d", options.MaxResults))
+	query.Set("tweet.fields", "created_at,entities")
+	if options.StartTime != "" {
+		query.Set("start_time", options.StartTime)
+	}
+	if options.EndTime != "" {
+		query.Set("end_time", options.EndTime)
+	}
+	if options.NextToken != "" {
+		query.Set("next_token", options.NextToken)
+	}
+	response, err := c.Do(ctx, http.MethodGet, "/2/tweets/search/recent?"+query.Encode(), nil)
+	if err != nil {
+		return SearchResponse{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	var result SearchResponse
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 func (c *Client) Do(
 	ctx context.Context,
 	method string,

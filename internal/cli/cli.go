@@ -44,17 +44,19 @@ func Run(
 		printUsage(stdout)
 		return 0
 	}
-	if len(args) < 2 {
+	if len(args) < 1 {
 		printUsage(stderr)
 		return 2
 	}
 
 	var err error
 	switch {
-	case args[0] == "auth" && args[1] == "login":
+	case len(args) >= 2 && args[0] == "auth" && args[1] == "login":
 		err = authLogin(ctx, args[2:], stdout, stderr, getenv)
-	case args[0] == "bookmarks" && args[1] == "list":
+	case len(args) >= 2 && args[0] == "bookmarks" && args[1] == "list":
 		err = bookmarksList(ctx, args[2:], stdout, stderr, getenv)
+	case args[0] == "search":
+		err = search(ctx, args[1:], stdout, stderr, getenv)
 	default:
 		printUsage(stderr)
 		return 2
@@ -225,6 +227,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  xapi-usecase auth login [options]")
 	_, _ = fmt.Fprintln(w, "  xapi-usecase bookmarks list [options]")
+	_, _ = fmt.Fprintln(w, "  xapi-usecase search --query QUERY [options]")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Run a command with --help for command-specific options.")
 }

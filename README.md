@@ -20,6 +20,9 @@ Before running the CLI, configure an approved X Developer App:
 - Enable these scopes: `tweet.read`, `users.read`, `bookmark.read`, `offline.access`.
 - Copy the OAuth2 Client ID.
 
+The `search` command uses an app bearer token instead of the saved OAuth token. Set
+`XAPI_USECASE_BEARER_TOKEN` or pass `--bearer-token`.
+
 The CLI does not use or store a client secret.
 
 ## Quick Start
@@ -31,6 +34,62 @@ export XAPI_USECASE_CLIENT_ID="your-client-id"
 go run ./cmd/xapi-usecase auth login
 go run ./cmd/xapi-usecase bookmarks list
 ```
+
+## Search external resources
+
+Search recent X posts, extract their expanded external URLs, deduplicate resources,
+and retain every source post:
+
+```sh
+export XAPI_USECASE_BEARER_TOKEN="your-bearer-token"
+go run ./cmd/xapi-usecase search \
+  --query '業務ドメイン 知識共有' --lang ja --limit 200 \
+  --start-time 2026-10-01T00:00:00Z --output results.json
+```
+
+`--query` accepts any X search expression. `--lang` adds an X language operator;
+`--start-time` and `--end-time` are RFC 3339 timestamps. The CLI pages until
+`--limit` posts (maximum 1,000) have been examined or the API has no next page.
+Only HTTP(S) links outside `x.com` and `twitter.com` are collected. Expanded or
+unwound destinations supplied by X are preferred, while the original shortened URL
+is retained on each source.
+
+The command always emits a JSON document when an API request fails after collection
+starts. `status` is then `incomplete`, and `incomplete_reason` distinguishes
+`authentication_or_access_denied`, `rate_limited`, `api_error`, and
+`request_failed`. It exits non-zero so partial output cannot be mistaken for a
+successful run. A successful zero-result search has `status: "complete"`, zero
+counts, and an empty `resources` array.
+
+Example (abbreviated):
+
+```json
+{
+  "status": "complete",
+  "search": {"query": "業務ドメイン 知識共有", "language": "ja", "limit": 200},
+  "retrieved_at": "2026-10-06T12:00:00Z",
+  "post_count": 2,
+  "resource_count": 1,
+  "resources": [{
+    "url": "https://speakerdeck.com/example/domain-modeling",
+    "sources": [{
+      "post_id": "123",
+      "post_url": "https://x.com/i/status/123",
+      "text": "参考資料です",
+      "created_at": "2026-10-05T09:00:00Z",
+      "short_url": "https://t.co/example"
+    }]
+  }]
+}
+```
+
+This uses X API v2 recent search (`GET /2/tweets/search/recent`). Availability,
+lookback window, monthly post cap, rate limits, and supported search operators depend
+on the X Developer plan attached to the app. The CLI cannot request posts outside
+that plan's recent-search window; X returns an API error for unsupported dates or
+operators. It does not crawl linked pages or summarize their contents. Consult the
+[X recent search documentation](https://docs.x.com/x-api/posts/recent-search) for
+the current plan-specific restrictions.
 
 ## Documentation
 
