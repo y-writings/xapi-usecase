@@ -55,6 +55,11 @@ Only HTTP(S) links outside `x.com` and `twitter.com` are collected. Expanded or
 unwound destinations supplied by X are preferred, while the original shortened URL
 is retained on each source.
 
+Before grouping, URLs are normalized by lowercasing the host, removing its terminal
+DNS dot and the URL fragment, normalizing numeric ports (omitting HTTP port 80 and
+HTTPS port 443), and using `/` for empty paths. Non-default ports, non-empty paths,
+and query strings remain part of resource identity.
+
 The command always emits a JSON document when an API request fails after collection
 starts. `status` is then `incomplete`, and `incomplete_reason` distinguishes
 `authentication_or_access_denied`, `rate_limited`, `api_error`, and

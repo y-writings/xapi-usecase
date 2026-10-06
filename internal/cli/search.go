@@ -207,13 +207,21 @@ func externalURL(raw string) (string, bool) {
 		return "", false
 	}
 	port := u.Port()
-	host := strings.ToLower(u.Host)
-	if port != "" {
-		host = strings.TrimSuffix(host, ":"+port)
-	}
+	host := strings.TrimSuffix(strings.ToLower(u.Host), ":"+port)
 	u.Host = strings.TrimSuffix(host, ".")
 	if port != "" {
+		port = strings.TrimLeft(port, "0")
+		if port == "" {
+			port = "0"
+		}
+	}
+	isDefaultPort := (u.Scheme == "http" && port == "80") ||
+		(u.Scheme == "https" && port == "443")
+	if port != "" && !isDefaultPort {
 		u.Host += ":" + port
+	}
+	if u.Path == "" {
+		u.Path = "/"
 	}
 	u.Fragment = ""
 	return u.String(), true

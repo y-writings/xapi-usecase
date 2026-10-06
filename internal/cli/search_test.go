@@ -26,11 +26,9 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 		writeResponse(t, w, `{"data":[`+
 			`{"id":"1","text":"first","created_at":"2026-10-01T00:00:00Z",`+
 			`"entities":{"urls":[{"url":"https://t.co/a",`+
-			`"expanded_url":"https://Example.com/article#part"},{"url":"https://t.co/a-duplicate",`+
-			`"expanded_url":"https://example.com./article"},{"url":"https://t.co/x",`+
-			`"expanded_url":"https://x.com/user/status/2"},{"url":"https://t.co/x-dot",`+
-			`"expanded_url":"https://x.com./user/status/3"},{"url":"https://t.co/twitter-dot",`+
-			`"expanded_url":"https://foo.twitter.com./user/status/4"}]}},`+
+			`"expanded_url":"https://example.com:443/article"},{"url":"https://t.co/a-duplicate",`+
+			`"expanded_url":"https://example.com/article"},{"url":"https://t.co/x",`+
+			`"expanded_url":"https://x.com/user/status/2"}]}},`+
 			`{"id":"2","text":"second","created_at":"2026-10-02T00:00:00Z",`+
 			`"entities":{"urls":[{"url":"https://t.co/b",`+
 			`"expanded_url":"https://example.com/article"}]}}],"meta":{"result_count":2}}`)
@@ -54,17 +52,55 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.PostCount != 2 || out.ResourceCount != 1 || len(out.Resources[0].Sources) != 2 {
+	if out.PostCount != 2 || out.ResourceCount != 1 || len(out.Resources) != 1 {
 		t.Fatalf("output = %+v", out)
+	}
+	if len(out.Resources[0].Sources) != 2 {
+		t.Fatalf("sources = %+v, want two distinct posts", out.Resources[0].Sources)
 	}
 	if out.Resources[0].Sources[0].PostID != "1" || out.Resources[0].Sources[1].PostID != "2" {
 		t.Fatalf("sources = %+v, want one source each from posts 1 and 2", out.Resources[0].Sources)
 	}
-	if strings.Contains(out.Resources[0].URL, "#") {
-		t.Fatalf("fragment not removed: %s", out.Resources[0].URL)
-	}
 	if out.Resources[0].URL != "https://example.com/article" {
-		t.Fatalf("resource URL = %q, want lowercase host", out.Resources[0].URL)
+		t.Fatalf("resource URL = %q, want canonical destination", out.Resources[0].URL)
+	}
+}
+
+func TestExternalURL(t *testing.T) {
+	cases := []struct {
+		name, raw, want string
+	}{
+		{"https default port", "https://example.com:443/p", "https://example.com/p"},
+		{"http default port", "http://example.com:80/p", "http://example.com/p"},
+		{"https non-default port", "https://example.com:80/p", "https://example.com:80/p"},
+		{"http non-default port", "http://example.com:443/p", "http://example.com:443/p"},
+		{"padded default port", "https://example.com:00443/p", "https://example.com/p"},
+		{"padded non-default port", "https://example.com:08443/p", "https://example.com:8443/p"},
+		{"zero port", "https://example.com:000/p", "https://example.com:0/p"},
+		{"empty port", "https://example.com:/p", "https://example.com/p"},
+		{"IPv6 default port", "https://[2001:db8::1]:443/p", "https://[2001:db8::1]/p"},
+		{"IPv6 non-default port", "https://[2001:db8::1]:80/p", "https://[2001:db8::1]:80/p"},
+		{"empty path", "https://example.com?Q=Go", "https://example.com/?Q=Go"},
+		{
+			"host and fragment normalization preserves path and query",
+			"HTTPS://Example.COM./Article%2FPart?Tag=Go#section",
+			"https://example.com/Article%2FPart?Tag=Go",
+		},
+		{"X apex with root dot", "https://x.com./user/status/1", ""},
+		{"Twitter subdomain with root dot", "https://foo.twitter.com./user/status/1", ""},
+		{
+			"external hostname with X prefix",
+			"https://x.com.example.com/p",
+			"https://x.com.example.com/p",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := externalURL(tc.raw)
+			if got != tc.want || ok != (tc.want != "") {
+				t.Fatalf("externalURL(%q) = (%q, %t), want %q", tc.raw, got, ok, tc.want)
+			}
+		})
 	}
 }
 
