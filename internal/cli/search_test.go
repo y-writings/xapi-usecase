@@ -27,8 +27,10 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 			`{"id":"1","text":"first","created_at":"2026-10-01T00:00:00Z",`+
 			`"entities":{"urls":[{"url":"https://t.co/a",`+
 			`"expanded_url":"https://Example.com/article#part"},{"url":"https://t.co/a-duplicate",`+
-			`"expanded_url":"https://example.com/article"},{"url":"https://t.co/x",`+
-			`"expanded_url":"https://x.com/user/status/2"}]}},`+
+			`"expanded_url":"https://example.com./article"},{"url":"https://t.co/x",`+
+			`"expanded_url":"https://x.com/user/status/2"},{"url":"https://t.co/x-dot",`+
+			`"expanded_url":"https://x.com./user/status/3"},{"url":"https://t.co/twitter-dot",`+
+			`"expanded_url":"https://foo.twitter.com./user/status/4"}]}},`+
 			`{"id":"2","text":"second","created_at":"2026-10-02T00:00:00Z",`+
 			`"entities":{"urls":[{"url":"https://t.co/b",`+
 			`"expanded_url":"https://example.com/article"}]}}],"meta":{"result_count":2}}`)

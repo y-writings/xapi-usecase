@@ -199,13 +199,22 @@ func externalURL(raw string) (string, bool) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return "", false
 	}
-	h := strings.ToLower(strings.TrimPrefix(u.Hostname(), "www."))
+	hostname := strings.TrimSuffix(u.Hostname(), ".")
+	h := strings.TrimPrefix(strings.ToLower(hostname), "www.")
 	isX := h == "x.com" || strings.HasSuffix(h, ".x.com")
 	isTwitter := h == "twitter.com" || strings.HasSuffix(h, ".twitter.com")
 	if isX || isTwitter {
 		return "", false
 	}
-	u.Host = strings.ToLower(u.Host)
+	port := u.Port()
+	host := strings.ToLower(u.Host)
+	if port != "" {
+		host = strings.TrimSuffix(host, ":"+port)
+	}
+	u.Host = strings.TrimSuffix(host, ".")
+	if port != "" {
+		u.Host += ":" + port
+	}
 	u.Fragment = ""
 	return u.String(), true
 }
