@@ -3,6 +3,7 @@ package cli
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,78 @@ func TestCallbackHandlerAcceptsMatchingStateAndCode(t *testing.T) {
 	}
 	if result.Code != "code-123" {
 		t.Fatalf("result.Code = %q, want code-123", result.Code)
+	}
+	for _, secret := range []string{"state-123", "code-123"} {
+		if strings.Contains(recorder.Body.String(), secret) {
+			t.Errorf("response body contains %q", secret)
+		}
+	}
+}
+
+func TestCallbackHandlerRendersHTML(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "authorization received",
+			query: "state=state-123&code=code-123",
+			want:  "Check the terminal where you started for the final sign-in result.",
+		},
+		{
+			name:  "authorization failed",
+			query: "state=state-123&error=access_denied",
+			want:  "Run the login command again and open the new authorization link.",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newCallbackHandler("state-123", make(chan callbackResult, 1))
+			request := httptest.NewRequest(http.MethodGet, "/callback?"+test.query, nil)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+
+			for name, want := range map[string]string{
+				"Content-Type":           "text/html; charset=utf-8",
+				"Cache-Control":          "no-store",
+				"Referrer-Policy":        "no-referrer",
+				"X-Content-Type-Options": "nosniff",
+				"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; " +
+					"base-uri 'none'; frame-ancestors 'none'",
+			} {
+				if got := recorder.Header().Get(name); got != want {
+					t.Errorf("%s = %q, want %q", name, got, want)
+				}
+			}
+			body := recorder.Body.String()
+			for _, want := range []string{"<!doctype html>", test.want, "You can close this tab."} {
+				if !strings.Contains(body, want) {
+					t.Errorf("response body is missing %q", want)
+				}
+			}
+		})
+	}
+}
+
+func TestCallbackHandlerEscapesOAuthErrorHTML(t *testing.T) {
+	const description = `<script>alert("retry")</script> & retry`
+	query := url.Values{
+		"state":             {"state-123"},
+		"error":             {"access_denied"},
+		"error_description": {description},
+	}
+	handler := newCallbackHandler("state-123", make(chan callbackResult, 1))
+	request := httptest.NewRequest(http.MethodGet, "/callback?"+query.Encode(), nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	if strings.Contains(body, "<script>") {
+		t.Fatal("response renders an executable script from the OAuth error")
+	}
+	const escaped = "&lt;script&gt;alert(&#34;retry&#34;)&lt;/script&gt; &amp; retry"
+	if !strings.Contains(body, escaped) {
+		t.Fatalf("response is missing the escaped error description %q", escaped)
 	}
 }
 
