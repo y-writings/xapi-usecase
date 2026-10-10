@@ -1,10 +1,15 @@
-## [weekly-2026.06.08] - 2026-06-07
+## [weekly-2026.06.15] - 2026-06-14
 
 ### 🚀 Features
 
-- Add X OAuth2 PKCE login (#3)
+- Add bookmark list command (#5)
+- Add nix flake (#7)
 
 ### 📚 Documentation
 
-- Add AGENTS instructions (#1)
-- Fix AGENTS project name (#2)
+- *(changelog)* Update changelog (#4)
+- Split usage documentation (#8)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add Go quality checks (#6)
