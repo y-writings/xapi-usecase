@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/y-writings/xapi-usecase/internal/output"
 	"github.com/y-writings/xapi-usecase/internal/xapi"
 )
 
@@ -23,33 +24,6 @@ type searchOptions struct {
 	ClientID, TokenFile                                      string
 	Limit                                                    int
 	Timeout                                                  time.Duration
-}
-type searchOutput struct {
-	Status           string           `json:"status"`
-	IncompleteReason string           `json:"incomplete_reason,omitempty"`
-	Search           searchConditions `json:"search"`
-	RetrievedAt      string           `json:"retrieved_at"`
-	PostCount        int              `json:"post_count"`
-	ResourceCount    int              `json:"resource_count"`
-	Resources        []resource       `json:"resources"`
-}
-type searchConditions struct {
-	Query     string `json:"query"`
-	Language  string `json:"language,omitempty"`
-	StartTime string `json:"start_time,omitempty"`
-	EndTime   string `json:"end_time,omitempty"`
-	Limit     int    `json:"limit"`
-}
-type resource struct {
-	URL     string   `json:"url"`
-	Sources []source `json:"sources"`
-}
-type source struct {
-	PostID    string `json:"post_id"`
-	PostURL   string `json:"post_url"`
-	Text      string `json:"text"`
-	CreatedAt string `json:"created_at"`
-	ShortURL  string `json:"short_url"`
 }
 
 func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv getenvFunc) error {
@@ -104,14 +78,14 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 	if err != nil {
 		return err
 	}
-	out := searchOutput{
+	out := output.SearchOutput{
 		Status: "complete",
-		Search: searchConditions{
+		Search: output.SearchConditions{
 			Query: o.Query, Language: o.Language, StartTime: o.StartTime,
 			EndTime: o.EndTime, Limit: o.Limit,
 		},
 		RetrievedAt: timeNow().UTC().Format(time.RFC3339),
-		Resources:   []resource{},
+		Resources:   []output.Resource{},
 	}
 	byURL := map[string]int{}
 	sourcePostsByURL := map[string]map[string]struct{}{}
@@ -159,7 +133,7 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 				if !ok {
 					continue
 				}
-				s := source{
+				s := output.Source{
 					PostID: tweet.ID, PostURL: "https://x.com/i/status/" + tweet.ID,
 					Text: postText, CreatedAt: tweet.CreatedAt, ShortURL: link.URL,
 				}
@@ -167,8 +141,8 @@ func search(ctx context.Context, args []string, stdout, stderr io.Writer, getenv
 				if !exists {
 					idx = len(out.Resources)
 					byURL[canonical] = idx
-					out.Resources = append(out.Resources, resource{
-						URL: canonical, Sources: []source{},
+					out.Resources = append(out.Resources, output.Resource{
+						URL: canonical, Sources: []output.Source{},
 					})
 				}
 				sourcePosts := sourcePostsByURL[canonical]
@@ -250,7 +224,7 @@ func classifySearchError(err error) string {
 	return "request_failed"
 }
 
-func writeSearchOutput(path string, w io.Writer, out searchOutput) error {
+func writeSearchOutput(path string, w io.Writer, out output.SearchOutput) error {
 	out.ResourceCount = len(out.Resources)
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

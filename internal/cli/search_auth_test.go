@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/y-writings/xapi-usecase/internal/output"
 	"github.com/y-writings/xapi-usecase/internal/tokenstore"
 	"github.com/y-writings/xapi-usecase/internal/xoauth"
 )
@@ -51,7 +52,8 @@ func TestSearchUsesSavedLoginTokenWithoutClientID(t *testing.T) {
 	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
-	var out searchOutput
+	validateSearchJSON(t, stdout.Bytes())
+	var out output.SearchOutput
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +111,7 @@ func TestSearchExplicitBearerDoesNotReadOrRefreshSavedToken(t *testing.T) {
 			if code := Run(context.Background(), args, &stdout, &stderr, getenv); code != 1 {
 				t.Fatalf("code = %d, stderr = %s, want API failure", code, stderr.String())
 			}
-			var out searchOutput
+			var out output.SearchOutput
 			if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 				t.Fatal(err)
 			}
@@ -255,7 +257,8 @@ func TestSearchRefreshesOnlyFailedPageAndPreservesResults(t *testing.T) {
 				t.Fatalf("code = %d, stderr = %s, want code %d and %q",
 					code, stderr.String(), wantCode, tc.stderr)
 			}
-			var out searchOutput
+			validateSearchJSON(t, stdout.Bytes())
+			var out output.SearchOutput
 			if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 				t.Fatal(err)
 			}

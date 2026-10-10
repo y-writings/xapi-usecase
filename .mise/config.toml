@@ -25,10 +25,25 @@ run = "golangci-lint run --enable-only modernize ./..."
 description = "Run Go tests"
 run = "go test ./..."
 
+[tasks.generate]
+description = "Generate Go output models and output reference documentation"
+run = "go run ./tools/generate-output"
+
+[tasks."generate:check"]
+description = "Regenerate output artifacts and fail if they are stale"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+go run ./tools/generate-output
+git diff --exit-code -- internal/output/search.gen.go docs/reference/search-output.md
+test -z "$(git ls-files --others --exclude-standard -- internal/output docs/reference)"
+'''
+
 [tasks.check]
 description = "Run formatting, lint, and tests"
 run = [
   { task = "fmt:check" },
+  { task = "generate:check" },
   { task = "lint" },
   { task = "test" },
 ]

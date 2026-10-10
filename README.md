@@ -72,38 +72,10 @@ DNS dot and the URL fragment, normalizing numeric ports (omitting HTTP port 80 a
 HTTPS port 443), and using `/` for empty paths. Non-default ports, non-empty paths,
 and query strings remain part of resource identity.
 
-The command always emits a JSON document when an API request fails after collection
-starts. `status` is then `incomplete`, and `incomplete_reason` distinguishes
-`authentication_or_access_denied`, `rate_limited`, `api_error`, and
-`request_failed`. An HTTP 200 response containing both `data` and `errors` is
-also `incomplete` with reason `api_error`; usable data from that response is
-included, and pagination stops. It exits non-zero so partial output cannot be
-mistaken for a successful run. A successful zero-result search has
-`status: "complete"`, zero counts, and an empty `resources` array.
-If token refresh fails after collection starts, the collected resources are
-emitted with `status: "incomplete"` and reason `request_failed`.
-
-Example (abbreviated):
-
-```json
-{
-  "status": "complete",
-  "search": {"query": "業務ドメイン 知識共有", "language": "ja", "limit": 200},
-  "retrieved_at": "2026-10-06T12:00:00Z",
-  "post_count": 2,
-  "resource_count": 1,
-  "resources": [{
-    "url": "https://speakerdeck.com/example/domain-modeling",
-    "sources": [{
-      "post_id": "123",
-      "post_url": "https://x.com/i/status/123",
-      "text": "参考資料です",
-      "created_at": "2026-10-05T09:00:00Z",
-      "short_url": "https://t.co/example"
-    }]
-  }]
-}
-```
+The command's generated [JSON field reference](docs/reference/search-output.md)
+documents required fields, partial results, empty results, and synthetic examples.
+See the [command output guide](docs/output.md) for stdout/stderr behavior, file
+output, and exit statuses.
 
 This uses X API v2 recent search (`GET /2/tweets/search/recent`). Availability,
 lookback window, monthly post cap, rate limits, and supported search operators depend
@@ -119,3 +91,5 @@ the current plan-specific restrictions.
   options, and token file contents.
 - [Bookmarks List](docs/bookmarks.md): `bookmarks list`, pagination, field and
   expansion options, required scopes, and refresh behavior.
+- [Command output contracts](docs/output.md): output destinations, formats, schema
+  ownership, exit statuses, and generation workflow.

@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/y-writings/xapi-usecase/internal/output"
 	"github.com/y-writings/xapi-usecase/internal/xapi"
 )
 
@@ -48,7 +51,8 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
-	var out searchOutput
+	validateSearchJSON(t, stdout.Bytes())
+	var out output.SearchOutput
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +67,37 @@ func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
 	}
 	if out.Resources[0].URL != "https://example.com/article" {
 		t.Fatalf("resource URL = %q, want canonical destination", out.Resources[0].URL)
+	}
+}
+
+func TestSearchOutputFileContainsOnlySchemaValidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeResponse(t, w, `{"data":[],"meta":{"result_count":0}}`)
+	}))
+	defer server.Close()
+	old := newXAPIClient
+	newXAPIClient = func(token string) *xapi.Client {
+		return &xapi.Client{AccessToken: token, BaseURL: server.URL, HTTPClient: server.Client()}
+	}
+	t.Cleanup(func() { newXAPIClient = old })
+
+	path := filepath.Join(t.TempDir(), "search.json")
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"search", "--query", "none", "--limit", "1",
+		"--bearer-token", "token", "--output", path,
+	}
+	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateSearchJSON(t, data)
+	if !strings.HasPrefix(stdout.String(), "Saved 0 resources to ") ||
+		strings.Contains(stdout.String(), `"status"`) {
+		t.Fatalf("stdout = %q, want only save confirmation", stdout.String())
 	}
 }
 
@@ -127,7 +162,7 @@ func TestSearchCollectsLongFormPostURLs(t *testing.T) {
 	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
-	var out searchOutput
+	var out output.SearchOutput
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +198,8 @@ func TestSearchMarksHTTP200PartialErrorsIncomplete(t *testing.T) {
 	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 1 {
 		t.Fatalf("code=%d stderr=%s, want non-zero for partial API data", code, stderr.String())
 	}
-	var out searchOutput
+	validateSearchJSON(t, stdout.Bytes())
+	var out output.SearchOutput
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
