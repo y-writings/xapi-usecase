@@ -14,6 +14,11 @@ The command resolves the authenticated user with `/2/users/me`, calls
 `/2/users/{id}/bookmarks`, and prints the X API JSON response pretty-formatted
 on stdout.
 
+This is a pass-through response whose fields vary with the requested fields and
+expansions; it is not a project-owned JSON contract. See the [command output
+guide](output.md) for stream and exit-status behavior and the upstream specification
+link.
+
 By default, the command requests:
 
 ```text
