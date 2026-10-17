@@ -35,56 +35,56 @@ go run ./cmd/xapi-usecase auth login
 go run ./cmd/xapi-usecase bookmarks list
 ```
 
-## Search external resources
+## Collect recent search posts
 
-Search recent X posts, extract their expanded external URLs (including long-form
-post URLs), deduplicate resources and source posts, and retain provenance. After
-running `auth login`:
+Collect recent posts as post-oriented JSON for later analysis, including posts with
+no links. For example, research recent Grok Bot use cases in Japanese or OpenAI
+Dots feedback in English:
 
 ```sh
 go run ./cmd/xapi-usecase search \
-  --query '業務ドメイン 知識共有' --lang ja --limit 200 \
-  --start-time 2026-10-01T00:00:00Z --output results.json
+  --query '@grok (使い方 OR 不具合 OR 評価)' --lang ja --limit 200 \
+  --start-time 2026-10-10T00:00:00Z --end-time 2026-10-17T00:00:00Z \
+  --output grok-posts.json
+
+go run ./cmd/xapi-usecase search \
+  --query '"OpenAI dots" (use case OR limitation OR feedback)' --lang en \
+  --limit 500 --output dots-posts.json
 ```
 
-Search uses the saved OAuth token by default. Use `--token-file` to select a
-different token file. Tokens expiring within five minutes are refreshed before
-search starts; a `401 Unauthorized` response triggers one refresh and one retry
-of that page. Refreshed tokens are saved to the same file. Refresh requires
-`--client-id` or `XAPI_USECASE_CLIENT_ID`; a valid token can be used without a
-client ID. Search requires `tweet.read` and `users.read`, with `offline.access`
-for refresh. `auth login` already requests these scopes.
+Every item contains the post ID and URL, text, creation time, author ID/name/username,
+and an `external_urls` array pairing the original shortened URL with the best expanded
+destination returned by X. A post without a link has `external_urls: []`. Full
+`note_post` text and its URLs are used when available. Posts are deduplicated by ID
+across pages, and `post_count` always equals the number of elements in `posts`.
 
-For app bearer authentication, pass `--bearer-token` or set
-`XAPI_USECASE_BEARER_TOKEN`. A non-empty bearer token takes precedence over the
-saved OAuth token, and the flag overrides the environment variable. Explicit
-bearer tokens are not refreshed, and failures do not fall back to the saved token.
+`--query` accepts any X search expression; `--lang` appends an X language operator.
+`--start-time` is inclusive and `--end-time` is exclusive, and both are optional
+RFC 3339 timestamps. The command pages until X returns no next page or the CLI's
+`--limit` (1–1,000) stops it while more results are available. These are separate
+constraints: Recent Search only covers approximately the preceding seven days;
+the requested boundaries further narrow that window; `--limit` is a local output
+cap; and the account's access level and rate limits can restrict what X returns.
 
-`--query` accepts any X search expression. `--lang` adds an X language operator;
-`--start-time` and `--end-time` are RFC 3339 timestamps. The CLI pages until
-`--limit` posts (maximum 1,000) have been examined or the API has no next page.
-Each resource lists a source post at most once, even if that post repeats the URL.
-Only HTTP(S) links outside `x.com` and `twitter.com` are collected. Expanded or
-unwound destinations supplied by X are preferred, while the original shortened URL
-is retained on each source.
+`status: "complete"` only means every page made available by the upstream request
+was consumed. It does not claim all posts on X were returned. `limit_reached` means
+the local cap stopped collection while another result or page was available.
+`incomplete` distinguishes authentication/access denial, rate limiting, API errors,
+and request failures, while preserving posts from successful pages and usable data
+in a partial response. Zero results are valid and produce `posts: []`.
 
-Before grouping, URLs are normalized by lowercasing the host, removing its terminal
-DNS dot and the URL fragment, normalizing numeric ports (omitting HTTP port 80 and
-HTTPS port 443), and using `/` for empty paths. Non-default ports, non-empty paths,
-and query strings remain part of resource identity.
+Search uses the saved OAuth token by default. Use `--token-file` to select another
+file. A token expiring within five minutes is refreshed before collection; a `401`
+response triggers one refresh and retry of the failed page. Refresh requires
+`--client-id` or `XAPI_USECASE_CLIENT_ID`. Alternatively, `--bearer-token` (or
+`XAPI_USECASE_BEARER_TOKEN`) selects an explicit bearer token, takes precedence over
+saved OAuth, and is not refreshed. Required scopes are `tweet.read` and `users.read`,
+plus `offline.access` for refresh.
 
-The command's generated [JSON field reference](docs/reference/search-output.md)
-documents required fields, partial results, empty results, and synthetic examples.
-See the [command output guide](docs/output.md) for stdout/stderr behavior, file
-output, and exit statuses.
-
-This uses X API v2 recent search (`GET /2/tweets/search/recent`). Availability,
-lookback window, monthly post cap, rate limits, and supported search operators depend
-on the X Developer plan attached to the app. The CLI cannot request posts outside
-that plan's recent-search window; X returns an API error for unsupported dates or
-operators. It does not crawl linked pages or summarize their contents. Consult the
-[X recent search documentation](https://docs.x.com/x-api/posts/recent-search) for
-the current plan-specific restrictions.
+The command uses `GET /2/tweets/search/recent`; it does not use Full-Archive Search,
+fetch linked-page contents, classify, summarize, or rank posts. See the generated
+[JSON field reference](docs/reference/search-output.md), the [command output guide](docs/output.md),
+and X's [Recent Search documentation](https://docs.x.com/x-api/posts/search-recent-posts).
 
 ## Retrieve a user's posts
 

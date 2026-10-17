@@ -1,3 +1,4 @@
+//nolint:lll // JSON response fixtures are more readable as complete lines.
 package cli
 
 import (
@@ -15,214 +16,151 @@ import (
 	"github.com/y-writings/xapi-usecase/internal/xapi"
 )
 
-func TestSearchCollectsAndDeduplicatesExternalResources(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/2/tweets/search/recent" {
-			t.Fatalf("path = %s", r.URL.Path)
-		}
-		if got := r.URL.Query().Get("query"); got != "(domain knowledge) lang:ja" {
-			t.Fatalf("query = %q", got)
-		}
-		if got := r.URL.Query().Get("post.fields"); got != "created_at,entities,note_post" {
-			t.Fatalf("post.fields = %q", got)
-		}
-		writeResponse(t, w, `{"data":[`+
-			`{"id":"1","text":"first","created_at":"2026-10-01T00:00:00Z",`+
-			`"entities":{"urls":[{"url":"https://t.co/a",`+
-			`"expanded_url":"https://example.com:443/article"},{"url":"https://t.co/a-duplicate",`+
-			`"expanded_url":"https://example.com/article"},{"url":"https://t.co/x",`+
-			`"expanded_url":"https://x.com/user/status/2"}]}},`+
-			`{"id":"2","text":"second","created_at":"2026-10-02T00:00:00Z",`+
-			`"entities":{"urls":[{"url":"https://t.co/b",`+
-			`"expanded_url":"https://example.com/article"}]}}],"meta":{"result_count":2}}`)
-	}))
-	defer server.Close()
+func installSearchServer(t *testing.T, handler http.HandlerFunc) {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
 	old := newXAPIClient
 	newXAPIClient = func(token string) *xapi.Client {
 		return &xapi.Client{AccessToken: token, BaseURL: server.URL, HTTPClient: server.Client()}
 	}
 	t.Cleanup(func() { newXAPIClient = old })
+}
+
+func runSearch(t *testing.T, args ...string) (int, []byte, string) {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
-	args := []string{
-		"search", "--query", "domain knowledge", "--lang", "ja",
-		"--limit", "2", "--bearer-token", "token",
-	}
-	code := Run(context.Background(), args, &stdout, &stderr, getenvNone)
+	code := Run(context.Background(), append([]string{"search"}, args...), &stdout, &stderr, getenvNone)
+	return code, stdout.Bytes(), stderr.String()
+}
+
+func TestSearchCollectsPostsWithAndWithoutLinksAndAuthors(t *testing.T) {
+	installSearchServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("query"); got != "(AI tools) lang:ja" {
+			t.Fatalf("query = %q", got)
+		}
+		if got := r.URL.Query().Get("post.fields"); got != "author_id,created_at,entities,note_post" {
+			t.Fatalf("post.fields = %q", got)
+		}
+		if got := r.URL.Query().Get("expansions"); got != "author_id" {
+			t.Fatalf("expansions = %q", got)
+		}
+		if got := r.URL.Query().Get("user.fields"); got != "name,username" {
+			t.Fatalf("user.fields = %q", got)
+		}
+		writeResponse(t, w, `{"data":[`+
+			`{"id":"1","author_id":"42","text":"linked","created_at":"2026-10-16T00:00:00Z","entities":{"urls":[{"url":"https://t.co/a","expanded_url":"https://example.com/a","unwound_url":"https://example.com/final"}]}},`+
+			`{"id":"2","author_id":"42","text":"no link","created_at":"2026-10-16T01:00:00Z","entities":{"urls":[]}}],`+
+			`"includes":{"users":[{"id":"42","name":"Alice","username":"alice"}]},"meta":{"result_count":2}}`)
+	})
+	code, data, stderr := runSearch(t, "--query", "AI tools", "--lang", "ja", "--limit", "10", "--bearer-token", "token")
 	if code != 0 {
-		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
-	validateSearchJSON(t, stdout.Bytes())
+	validateSearchJSON(t, data)
 	var out output.SearchOutput
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.PostCount != 2 || out.ResourceCount != 1 || len(out.Resources) != 1 {
+	if out.Status != "complete" || out.PostCount != 2 || len(out.Posts) != 2 {
 		t.Fatalf("output = %+v", out)
 	}
-	if len(out.Resources[0].Sources) != 2 {
-		t.Fatalf("sources = %+v, want two distinct posts", out.Resources[0].Sources)
+	if out.Posts[0].Author.Username != "alice" || out.Posts[0].URL != "https://x.com/alice/status/1" {
+		t.Fatalf("post = %+v", out.Posts[0])
 	}
-	if out.Resources[0].Sources[0].PostID != "1" || out.Resources[0].Sources[1].PostID != "2" {
-		t.Fatalf("sources = %+v, want one source each from posts 1 and 2", out.Resources[0].Sources)
+	if len(out.Posts[0].ExternalURLs) != 1 || out.Posts[0].ExternalURLs[0].ExpandedURL != "https://example.com/final" || out.Posts[0].ExternalURLs[0].ShortURL != "https://t.co/a" {
+		t.Fatalf("external_urls = %+v", out.Posts[0].ExternalURLs)
 	}
-	if out.Resources[0].URL != "https://example.com/article" {
-		t.Fatalf("resource URL = %q, want canonical destination", out.Resources[0].URL)
+	if out.Posts[1].ExternalURLs == nil || len(out.Posts[1].ExternalURLs) != 0 {
+		t.Fatalf("linkless external_urls = %#v", out.Posts[1].ExternalURLs)
 	}
 }
 
-func TestSearchOutputFileContainsOnlySchemaValidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeResponse(t, w, `{"data":[],"meta":{"result_count":0}}`)
-	}))
-	defer server.Close()
-	old := newXAPIClient
-	newXAPIClient = func(token string) *xapi.Client {
-		return &xapi.Client{AccessToken: token, BaseURL: server.URL, HTTPClient: server.Client()}
+func TestSearchDeduplicatesPostsAcrossPagesAndMarksLimit(t *testing.T) {
+	requests := 0
+	installSearchServer(t, func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			writeResponse(t, w, `{"data":[{"id":"1","text":"one","entities":{"urls":[]}}],"meta":{"result_count":1,"next_token":"next"}}`)
+			return
+		}
+		if r.URL.Query().Get("next_token") != "next" {
+			t.Fatalf("next_token = %q", r.URL.Query().Get("next_token"))
+		}
+		writeResponse(t, w, `{"data":[{"id":"1","text":"duplicate","entities":{"urls":[]}},{"id":"2","text":"two","entities":{"urls":[]}}],"meta":{"result_count":2,"next_token":"more"}}`)
+	})
+	code, data, stderr := runSearch(t, "--query", "x", "--limit", "2", "--bearer-token", "token")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
-	t.Cleanup(func() { newXAPIClient = old })
+	var out output.SearchOutput
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "limit_reached" || out.PostCount != 2 || len(out.Posts) != 2 || out.Posts[1].ID != "2" {
+		t.Fatalf("output = %+v", out)
+	}
+}
 
-	path := filepath.Join(t.TempDir(), "search.json")
-	var stdout, stderr bytes.Buffer
-	args := []string{
-		"search", "--query", "none", "--limit", "1",
-		"--bearer-token", "token", "--output", path,
+func TestSearchUsesLongFormTextAndURLs(t *testing.T) {
+	installSearchServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeResponse(t, w, `{"data":[{"id":"long","text":"truncated","entities":{"urls":[]},"note_post":{"text":"complete","entities":{"urls":[{"url":"https://t.co/l","expanded_url":"https://example.com/long"}]}}}],"meta":{"result_count":1}}`)
+	})
+	code, data, stderr := runSearch(t, "--query", "long", "--limit", "1", "--bearer-token", "token")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
-	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 0 {
-		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	var out output.SearchOutput
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Posts[0].Text != "complete" || out.Posts[0].ExternalURLs[0].ExpandedURL != "https://example.com/long" {
+		t.Fatalf("post = %+v", out.Posts[0])
+	}
+}
+
+func TestSearchPartialErrorKeepsUsablePosts(t *testing.T) {
+	installSearchServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeResponse(t, w, `{"data":[{"id":"1","text":"usable","entities":{"urls":[]}}],"errors":[{"title":"Partial","detail":"missing"}],"meta":{"result_count":1}}`)
+	})
+	code, data, _ := runSearch(t, "--query", "partial", "--limit", "2", "--bearer-token", "token")
+	if code != 1 {
+		t.Fatalf("code=%d, want 1", code)
+	}
+	validateSearchJSON(t, data)
+	var out output.SearchOutput
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "incomplete" || out.IncompleteReason != "api_error" || out.PostCount != 1 {
+		t.Fatalf("output = %+v", out)
+	}
+}
+
+func TestSearchOutputFileContainsOnlyJSON(t *testing.T) {
+	installSearchServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeResponse(t, w, `{"data":[],"meta":{"result_count":0}}`)
+	})
+	path := filepath.Join(t.TempDir(), "search.json")
+	code, stdout, stderr := runSearch(t, "--query", "none", "--limit", "1", "--bearer-token", "token", "--output", path)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	validateSearchJSON(t, data)
-	if !strings.HasPrefix(stdout.String(), "Saved 0 resources to ") ||
-		strings.Contains(stdout.String(), `"status"`) {
-		t.Fatalf("stdout = %q, want only save confirmation", stdout.String())
+	if !strings.HasPrefix(string(stdout), "Saved 0 posts to ") || strings.Contains(string(stdout), `"status"`) {
+		t.Fatalf("stdout = %q", stdout)
 	}
 }
 
-func TestExternalURL(t *testing.T) {
-	cases := []struct {
-		name, raw, want string
-	}{
-		{"https default port", "https://example.com:443/p", "https://example.com/p"},
-		{"http default port", "http://example.com:80/p", "http://example.com/p"},
-		{"https non-default port", "https://example.com:80/p", "https://example.com:80/p"},
-		{"http non-default port", "http://example.com:443/p", "http://example.com:443/p"},
-		{"padded default port", "https://example.com:00443/p", "https://example.com/p"},
-		{"padded non-default port", "https://example.com:08443/p", "https://example.com:8443/p"},
-		{"zero port", "https://example.com:000/p", "https://example.com:0/p"},
-		{"empty port", "https://example.com:/p", "https://example.com/p"},
-		{"IPv6 default port", "https://[2001:db8::1]:443/p", "https://[2001:db8::1]/p"},
-		{"IPv6 non-default port", "https://[2001:db8::1]:80/p", "https://[2001:db8::1]:80/p"},
-		{"empty path", "https://example.com?Q=Go", "https://example.com/?Q=Go"},
-		{
-			"host and fragment normalization preserves path and query",
-			"HTTPS://Example.COM./Article%2FPart?Tag=Go#section",
-			"https://example.com/Article%2FPart?Tag=Go",
-		},
-		{"X apex with root dot", "https://x.com./user/status/1", ""},
-		{"Twitter subdomain with root dot", "https://foo.twitter.com./user/status/1", ""},
-		{
-			"external hostname with X prefix",
-			"https://x.com.example.com/p",
-			"https://x.com.example.com/p",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := externalURL(tc.raw)
-			if got != tc.want || ok != (tc.want != "") {
-				t.Fatalf("externalURL(%q) = (%q, %t), want %q", tc.raw, got, ok, tc.want)
-			}
-		})
-	}
-}
-
-func TestSearchCollectsLongFormPostURLs(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("post.fields"); got != "created_at,entities,note_post" {
-			t.Fatalf("post.fields = %q", got)
+func TestSearchRejectsInvalidConditions(t *testing.T) {
+	for _, args := range [][]string{{}, {"--query", "x", "--start-time", "2026-10-17T00:00:00Z", "--end-time", "2026-10-16T00:00:00Z"}} {
+		code, _, stderr := runSearch(t, args...)
+		if code != 2 || stderr == "" {
+			t.Fatalf("args=%v code=%d stderr=%q", args, code, stderr)
 		}
-		writeResponse(t, w, `{"data":[{"id":"long-1","text":"truncated text",`+
-			`"created_at":"2026-10-01T00:00:00Z","entities":{"urls":[]},`+
-			`"note_post":{"text":"complete long-form text with https://t.co/long",`+
-			`"entities":{"urls":[{"url":"https://t.co/long",`+
-			`"expanded_url":"https://example.com/long-form"}]}}}],`+
-			`"meta":{"result_count":1}}`)
-	}))
-	defer server.Close()
-	old := newXAPIClient
-	newXAPIClient = func(token string) *xapi.Client {
-		return &xapi.Client{AccessToken: token, BaseURL: server.URL, HTTPClient: server.Client()}
-	}
-	t.Cleanup(func() { newXAPIClient = old })
-	var stdout, stderr bytes.Buffer
-	args := []string{"search", "--query", "long form", "--limit", "1", "--bearer-token", "token"}
-	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 0 {
-		t.Fatalf("code=%d stderr=%s", code, stderr.String())
-	}
-	var out output.SearchOutput
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if out.ResourceCount != 1 || out.Resources[0].URL != "https://example.com/long-form" {
-		t.Fatalf("resources = %+v", out.Resources)
-	}
-	got := out.Resources[0].Sources[0]
-	if got.PostID != "long-1" ||
-		got.Text != "complete long-form text with https://t.co/long" ||
-		got.ShortURL != "https://t.co/long" {
-		t.Fatalf("source = %+v, want full long-form provenance", got)
-	}
-}
-
-func TestSearchMarksHTTP200PartialErrorsIncomplete(t *testing.T) {
-	var requests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		writeResponse(t, w, `{"data":[{"id":"1","text":"usable result",`+
-			`"entities":{"urls":[{"url":"https://t.co/a",`+
-			`"expanded_url":"https://example.com/article"}]}}],`+
-			`"errors":[{"title":"Partial response","detail":"some results unavailable"}],`+
-			`"meta":{"result_count":1,"next_token":"next-page"}}`)
-	}))
-	defer server.Close()
-	old := newXAPIClient
-	newXAPIClient = func(token string) *xapi.Client {
-		return &xapi.Client{AccessToken: token, BaseURL: server.URL, HTTPClient: server.Client()}
-	}
-	t.Cleanup(func() { newXAPIClient = old })
-	var stdout, stderr bytes.Buffer
-	args := []string{"search", "--query", "partial", "--limit", "2", "--bearer-token", "token"}
-	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 1 {
-		t.Fatalf("code=%d stderr=%s, want non-zero for partial API data", code, stderr.String())
-	}
-	validateSearchJSON(t, stdout.Bytes())
-	var out output.SearchOutput
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if out.Status != "incomplete" || out.IncompleteReason != "api_error" {
-		t.Fatalf(
-			"status = %q, reason = %q, want incomplete/api_error",
-			out.Status,
-			out.IncompleteReason,
-		)
-	}
-	if out.PostCount != 1 || out.ResourceCount != 1 || out.Resources[0].Sources[0].PostID != "1" {
-		t.Fatalf("partial output = %+v, want the usable data from the response", out)
-	}
-	if requests != 1 {
-		t.Fatalf("requests = %d, want to stop after a partial response", requests)
-	}
-}
-
-func TestSearchRequiresQuery(t *testing.T) {
-	var out, errout bytes.Buffer
-	getenv := func(_ string) string { return "token" }
-	code := Run(context.Background(), []string{"search"}, &out, &errout, getenv)
-	if code != 2 || !strings.Contains(errout.String(), "--query is required") {
-		t.Fatalf("code=%d stderr=%s", code, errout.String())
 	}
 }

@@ -2,22 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/y-writings/xapi-usecase/schemas/search.schema.json",
   "title": "SearchOutput",
-  "description": "The JSON document produced by the search command after collection starts.",
+  "description": "The post-oriented JSON document produced by the Recent Search command after collection starts.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "search", "retrieved_at", "post_count", "resource_count", "resources"],
+  "required": ["status", "search", "retrieved_at", "post_count", "posts"],
   "properties": {
-    "status": {"type": "string", "enum": ["complete", "incomplete"], "description": "Whether collection finished within the requested conditions and limit."},
+    "status": {"type": "string", "enum": ["complete", "limit_reached", "incomplete"], "description": "How collection stopped: upstream pages exhausted, the CLI limit stopped collection while more results were available, or a failure interrupted collection."},
     "incomplete_reason": {"type": "string", "enum": ["authentication_or_access_denied", "rate_limited", "api_error", "request_failed"], "description": "Why collection stopped early. Present only when status is incomplete."},
-    "search": {"$ref": "#/$defs/SearchConditions", "description": "The effective user-supplied search conditions."},
+    "search": {"$ref": "#/$defs/SearchConditions", "description": "The user-supplied search conditions."},
     "retrieved_at": {"type": "string", "description": "UTC time at which this collection run started."},
-    "post_count": {"type": "integer", "minimum": 0, "description": "Number of posts examined, before resource and source deduplication."},
-    "resource_count": {"type": "integer", "minimum": 0, "description": "Number of distinct normalized resources; equals the length of resources."},
-    "resources": {"type": "array", "items": {"$ref": "#/$defs/Resource"}, "description": "Distinct external resources. Always an array, including for zero results."}
+    "post_count": {"type": "integer", "minimum": 0, "description": "Number of posts saved after deduplication; equals the length of posts."},
+    "posts": {"type": "array", "items": {"$ref": "#/$defs/Post"}, "description": "Posts deduplicated by upstream post ID, including posts without external links. Always an array."}
   },
   "allOf": [
     {"if": {"properties": {"status": {"const": "incomplete"}}, "required": ["status"]}, "then": {"required": ["incomplete_reason"]}},
-    {"if": {"properties": {"status": {"const": "complete"}}, "required": ["status"]}, "then": {"not": {"required": ["incomplete_reason"]}}}
+    {"if": {"properties": {"status": {"enum": ["complete", "limit_reached"]}}, "required": ["status"]}, "then": {"not": {"required": ["incomplete_reason"]}}}
   ],
   "$defs": {
     "SearchConditions": {
@@ -26,32 +25,41 @@
       "properties": {
         "query": {"type": "string", "description": "The X search expression before the language operator is added."},
         "language": {"type": "string", "description": "Optional X language code; omitted when not specified."},
-        "start_time": {"type": "string", "description": "Optional RFC 3339 lower time bound; omitted when not specified."},
-        "end_time": {"type": "string", "description": "Optional RFC 3339 upper time bound; omitted when not specified."},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Maximum number of posts to examine."}
+        "start_time": {"type": "string", "description": "Optional RFC 3339 inclusive lower time bound; omitted when not specified."},
+        "end_time": {"type": "string", "description": "Optional RFC 3339 exclusive upper time bound; omitted when not specified."},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Maximum number of deduplicated posts to save."}
       }
     },
-    "Resource": {
-      "type": "object", "additionalProperties": false, "required": ["url", "sources"],
-      "properties": {
-        "url": {"type": "string", "description": "Normalized external resource URL."},
-        "sources": {"type": "array", "items": {"$ref": "#/$defs/Source"}, "description": "Deduplicated source posts for this resource."}
-      }
-    },
-    "Source": {
+    "Post": {
       "type": "object", "additionalProperties": false,
-      "required": ["post_id", "post_url", "text", "created_at", "short_url"],
+      "required": ["id", "url", "text", "created_at", "author", "external_urls"],
       "properties": {
-        "post_id": {"type": "string", "description": "Upstream X post identifier."},
-        "post_url": {"type": "string", "description": "Canonical x.com URL for the source post."},
-        "text": {"type": "string", "description": "Post or note-post text returned by X."},
-        "created_at": {"type": "string", "description": "Upstream created_at value; an empty string is used when X omits it."},
-        "short_url": {"type": "string", "description": "Original shortened URL from the post; an empty string is allowed when X omits it."}
+        "id": {"type": "string", "description": "Upstream X post identifier."},
+        "url": {"type": "string", "description": "Canonical x.com URL for the post."},
+        "text": {"type": "string", "description": "Post text, using full note-post text when X supplies it."},
+        "created_at": {"type": "string", "description": "Upstream created_at value; empty when X omits it."},
+        "author": {"$ref": "#/$defs/PostAuthor", "description": "Information identifying the post author."},
+        "external_urls": {"type": "array", "items": {"$ref": "#/$defs/ExternalURL"}, "description": "External URL occurrences attached to the post; empty when it has none."}
+      }
+    },
+    "PostAuthor": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "username"],
+      "properties": {
+        "id": {"type": "string", "description": "Upstream X user identifier."},
+        "name": {"type": "string", "description": "Author display name; empty when X omits it."},
+        "username": {"type": "string", "description": "Author username; empty when X omits it."}
+      }
+    },
+    "ExternalURL": {
+      "type": "object", "additionalProperties": false, "required": ["short_url", "expanded_url"],
+      "properties": {
+        "short_url": {"type": "string", "description": "Original shortened URL in the post."},
+        "expanded_url": {"type": "string", "description": "Best expanded destination returned by X (unwound_url when available, otherwise expanded_url)."}
       }
     }
   },
   "examples": [
-    {"status":"complete","search":{"query":"domain modeling","limit":100},"retrieved_at":"2026-10-09T00:00:00Z","post_count":0,"resource_count":0,"resources":[]},
-    {"status":"incomplete","incomplete_reason":"rate_limited","search":{"query":"knowledge sharing","language":"en","start_time":"2026-10-01T00:00:00Z","limit":200},"retrieved_at":"2026-10-09T00:00:00Z","post_count":1,"resource_count":1,"resources":[{"url":"https://example.com/article","sources":[{"post_id":"123","post_url":"https://x.com/i/status/123","text":"Example","created_at":"","short_url":"https://t.co/example"}]}]}
+    {"status":"complete","search":{"query":"@grok use case","limit":100},"retrieved_at":"2026-10-17T00:00:00Z","post_count":0,"posts":[]},
+    {"status":"limit_reached","search":{"query":"OpenAI dots","language":"en","limit":1},"retrieved_at":"2026-10-17T00:00:00Z","post_count":1,"posts":[{"id":"123","url":"https://x.com/alice/status/123","text":"A recent observation","created_at":"2026-10-16T12:00:00Z","author":{"id":"42","name":"Alice","username":"alice"},"external_urls":[{"short_url":"https://t.co/example","expanded_url":"https://example.com/article"}]}]}
   ]
 }

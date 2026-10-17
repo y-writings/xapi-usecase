@@ -57,7 +57,7 @@ func TestSearchUsesSavedLoginTokenWithoutClientID(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.Status != "complete" || out.PostCount != 0 || out.Resources == nil {
+	if out.Status != "complete" || out.PostCount != 0 || out.Posts == nil {
 		t.Fatalf("output = %+v, want complete empty search", out)
 	}
 }
@@ -263,17 +263,16 @@ func TestSearchRefreshesOnlyFailedPageAndPreservesResults(t *testing.T) {
 				t.Fatal(err)
 			}
 			if out.Status != wantStatus || out.IncompleteReason != tc.reason ||
-				out.PostCount != wantCount || out.ResourceCount != wantCount ||
-				len(out.Resources) != wantCount {
+				out.PostCount != wantCount || len(out.Posts) != wantCount {
 				t.Fatalf("output = %+v, want %s/%s with %d results",
 					out, wantStatus, tc.reason, wantCount)
 			}
-			for i, resource := range out.Resources {
+			for i, post := range out.Posts {
 				id := fmt.Sprint(i + 1)
-				if resource.URL != "https://example.com/"+id || len(resource.Sources) != 1 ||
-					resource.Sources[0].PostID != id {
-					t.Errorf("resource %d = %+v, want retained post %s exactly once",
-						i, resource, id)
+				if post.ID != id || len(post.ExternalURLs) != 1 ||
+					post.ExternalURLs[0].ExpandedURL != "https://example.com/"+id {
+					t.Errorf("post %d = %+v, want retained post %s exactly once",
+						i, post, id)
 				}
 			}
 			mu.Lock()

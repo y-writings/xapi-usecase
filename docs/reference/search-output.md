@@ -2,46 +2,54 @@
 
 # `search` JSON output
 
-The JSON document produced by the search command after collection starts.
+The post-oriented JSON document produced by the Recent Search command after collection starts.
 
 ## SearchOutput
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
 | `incomplete_reason` | string (`authentication_or_access_denied`, `rate_limited`, `api_error`, `request_failed`) | false | Why collection stopped early. Present only when status is incomplete. |
-| `post_count` | integer | true | Number of posts examined, before resource and source deduplication. |
-| `resource_count` | integer | true | Number of distinct normalized resources; equals the length of resources. |
-| `resources` | array of [`Resource`](#resource) | true | Distinct external resources. Always an array, including for zero results. |
+| `post_count` | integer | true | Number of posts saved after deduplication; equals the length of posts. |
+| `posts` | array of [`Post`](#post) | true | Posts deduplicated by upstream post ID, including posts without external links. Always an array. |
 | `retrieved_at` | string | true | UTC time at which this collection run started. |
-| `search` | [`SearchConditions`](#searchconditions) | true | The effective user-supplied search conditions. |
-| `status` | string (`complete`, `incomplete`) | true | Whether collection finished within the requested conditions and limit. |
+| `search` | [`SearchConditions`](#searchconditions) | true | The user-supplied search conditions. |
+| `status` | string (`complete`, `limit_reached`, `incomplete`) | true | How collection stopped: upstream pages exhausted, the CLI limit stopped collection while more results were available, or a failure interrupted collection. |
 
-## Resource
+## ExternalURL
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `sources` | array of [`Source`](#source) | true | Deduplicated source posts for this resource. |
-| `url` | string | true | Normalized external resource URL. |
+| `expanded_url` | string | true | Best expanded destination returned by X (unwound_url when available, otherwise expanded_url). |
+| `short_url` | string | true | Original shortened URL in the post. |
+
+## Post
+
+| Field | Type | Required | Description |
+|---|---|---:|---|
+| `author` | [`PostAuthor`](#postauthor) | true | Information identifying the post author. |
+| `created_at` | string | true | Upstream created_at value; empty when X omits it. |
+| `external_urls` | array of [`ExternalURL`](#externalurl) | true | External URL occurrences attached to the post; empty when it has none. |
+| `id` | string | true | Upstream X post identifier. |
+| `text` | string | true | Post text, using full note-post text when X supplies it. |
+| `url` | string | true | Canonical x.com URL for the post. |
+
+## PostAuthor
+
+| Field | Type | Required | Description |
+|---|---|---:|---|
+| `id` | string | true | Upstream X user identifier. |
+| `name` | string | true | Author display name; empty when X omits it. |
+| `username` | string | true | Author username; empty when X omits it. |
 
 ## SearchConditions
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `end_time` | string | false | Optional RFC 3339 upper time bound; omitted when not specified. |
+| `end_time` | string | false | Optional RFC 3339 exclusive upper time bound; omitted when not specified. |
 | `language` | string | false | Optional X language code; omitted when not specified. |
-| `limit` | integer | true | Maximum number of posts to examine. |
+| `limit` | integer | true | Maximum number of deduplicated posts to save. |
 | `query` | string | true | The X search expression before the language operator is added. |
-| `start_time` | string | false | Optional RFC 3339 lower time bound; omitted when not specified. |
-
-## Source
-
-| Field | Type | Required | Description |
-|---|---|---:|---|
-| `created_at` | string | true | Upstream created_at value; an empty string is used when X omits it. |
-| `post_id` | string | true | Upstream X post identifier. |
-| `post_url` | string | true | Canonical x.com URL for the source post. |
-| `short_url` | string | true | Original shortened URL from the post; an empty string is allowed when X omits it. |
-| `text` | string | true | Post or note-post text returned by X. |
+| `start_time` | string | false | Optional RFC 3339 inclusive lower time bound; omitted when not specified. |
 
 ## Examples
 
@@ -50,12 +58,11 @@ These synthetic examples are validated against the schema.
 ```json
 {
   "post_count": 0,
-  "resource_count": 0,
-  "resources": [],
-  "retrieved_at": "2026-10-09T00:00:00Z",
+  "posts": [],
+  "retrieved_at": "2026-10-17T00:00:00Z",
   "search": {
     "limit": 100,
-    "query": "domain modeling"
+    "query": "@grok use case"
   },
   "status": "complete"
 }
@@ -63,30 +70,32 @@ These synthetic examples are validated against the schema.
 
 ```json
 {
-  "incomplete_reason": "rate_limited",
   "post_count": 1,
-  "resource_count": 1,
-  "resources": [
+  "posts": [
     {
-      "sources": [
+      "author": {
+        "id": "42",
+        "name": "Alice",
+        "username": "alice"
+      },
+      "created_at": "2026-10-16T12:00:00Z",
+      "external_urls": [
         {
-          "created_at": "",
-          "post_id": "123",
-          "post_url": "https://x.com/i/status/123",
-          "short_url": "https://t.co/example",
-          "text": "Example"
+          "expanded_url": "https://example.com/article",
+          "short_url": "https://t.co/example"
         }
       ],
-      "url": "https://example.com/article"
+      "id": "123",
+      "text": "A recent observation",
+      "url": "https://x.com/alice/status/123"
     }
   ],
-  "retrieved_at": "2026-10-09T00:00:00Z",
+  "retrieved_at": "2026-10-17T00:00:00Z",
   "search": {
     "language": "en",
-    "limit": 200,
-    "query": "knowledge sharing",
-    "start_time": "2026-10-01T00:00:00Z"
+    "limit": 1,
+    "query": "OpenAI dots"
   },
-  "status": "incomplete"
+  "status": "limit_reached"
 }
 ```
