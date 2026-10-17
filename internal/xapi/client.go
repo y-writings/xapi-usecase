@@ -37,6 +37,11 @@ type MeResponse struct {
 	Data User `json:"data"`
 }
 
+type UserResponse struct {
+	Data   User          `json:"data"`
+	Errors []SearchError `json:"errors,omitempty"`
+}
+
 type User struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -96,6 +101,74 @@ type TweetURL struct {
 type SearchMeta struct {
 	ResultCount int    `json:"result_count"`
 	NextToken   string `json:"next_token,omitempty"`
+}
+
+type UserPostsOptions struct {
+	StartTime, EndTime, PaginationToken string
+	MaxResults                          int
+	ExcludeReplies, ExcludeReposts      bool
+}
+
+type UserPostsResponse struct {
+	Data   []Tweet       `json:"data"`
+	Errors []SearchError `json:"errors,omitempty"`
+	Meta   SearchMeta    `json:"meta"`
+}
+
+func (c *Client) UserByUsername(ctx context.Context, username string) (UserResponse, error) {
+	if username == "" {
+		return UserResponse{}, errors.New("username is required")
+	}
+	path := "/2/users/by/username/" + url.PathEscape(username) + "?user.fields=name,username"
+	response, err := c.Do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return UserResponse{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	var result UserResponse
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (c *Client) UserPosts(
+	ctx context.Context,
+	userID string,
+	options UserPostsOptions,
+) (UserPostsResponse, error) {
+	if userID == "" {
+		return UserPostsResponse{}, errors.New("user ID is required")
+	}
+	query := url.Values{}
+	query.Set("max_results", fmt.Sprintf("%d", options.MaxResults))
+	query.Set("post.fields", "created_at,note_post")
+	query.Set("start_time", options.StartTime)
+	query.Set("end_time", options.EndTime)
+	if options.PaginationToken != "" {
+		query.Set("pagination_token", options.PaginationToken)
+	}
+	var excludes []string
+	if options.ExcludeReplies {
+		excludes = append(excludes, "replies")
+	}
+	if options.ExcludeReposts {
+		excludes = append(excludes, "retweets")
+	}
+	if len(excludes) > 0 {
+		query.Set("exclude", strings.Join(excludes, ","))
+	}
+	path := "/2/users/" + url.PathEscape(userID) + "/tweets?" + query.Encode()
+	response, err := c.Do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return UserPostsResponse{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	var result UserPostsResponse
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func (c *Client) SearchRecent(ctx context.Context, options SearchOptions) (SearchResponse, error) {
