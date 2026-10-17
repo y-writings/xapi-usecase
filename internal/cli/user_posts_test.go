@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,14 +31,14 @@ func TestUserPostsResolvesUserPagesAndKeepsAllPostText(t *testing.T) {
 			if q.Get("start_time") != "2026-09-01T00:00:00Z" || q.Get("end_time") != "2026-10-01T00:00:00Z" {
 				t.Fatalf("time query = %v", q)
 			}
-			if q.Get("exclude") != "replies,retweets" || q.Get("tweet.fields") != "created_at,note_tweet" {
+			if q.Get("exclude") != "replies,retweets" || q.Get("post.fields") != "created_at,note_post" || q.Has("tweet.fields") {
 				t.Fatalf("post query = %v", q)
 			}
 			if q.Get("pagination_token") == "" {
 				writeResponse(t, w, `{"data":[{"id":"1","text":"no links","created_at":"2026-09-03T00:00:00Z"}],"meta":{"next_token":"page-2"}}`)
 				return
 			}
-			writeResponse(t, w, `{"data":[{"id":"2","text":"short","created_at":"2026-09-02T00:00:00Z","note_tweet":{"text":"complete long post"}}],"meta":{}}`)
+			writeResponse(t, w, `{"data":[{"id":"2","text":"short","created_at":"2026-09-02T00:00:00Z","note_post":{"text":"complete long post"}},{"id":"3","text":"regular text","created_at":"2026-09-01T00:00:00Z","note_post":{"text":""}}],"meta":{}}`)
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -45,7 +47,7 @@ func TestUserPostsResolvesUserPagesAndKeepsAllPostText(t *testing.T) {
 	useUserPostsTestClient(t, server)
 
 	var stdout, stderr bytes.Buffer
-	args := []string{"user-posts", "--username", "@example", "--start-time", "2026-09-01T00:00:00Z", "--end-time", "2026-10-01T00:00:00Z", "--limit", "3", "--exclude-replies", "--exclude-reposts", "--bearer-token", "token"}
+	args := []string{"user-posts", "--username", "@example", "--start-time", "2026-09-01T00:00:00Z", "--end-time", "2026-10-01T00:00:00Z", "--limit", "4", "--exclude-replies", "--exclude-reposts", "--bearer-token", "token"}
 	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -54,11 +56,14 @@ func TestUserPostsResolvesUserPagesAndKeepsAllPostText(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if requests != 3 || got.Status != "complete" || got.PostCount != 2 || len(got.Posts) != 2 {
+	if requests != 3 || got.Status != "complete" || got.PostCount != 3 || len(got.Posts) != 3 {
 		t.Fatalf("requests = %d, output = %+v", requests, got)
 	}
-	if got.Posts[0].Text != "no links" || got.Posts[1].Text != "complete long post" || got.Posts[1].URL != "https://x.com/example/status/2" {
+	if got.Posts[0].Text != "no links" || got.Posts[1].Text != "complete long post" || got.Posts[2].Text != "regular text" || got.Posts[1].URL != "https://x.com/example/status/2" {
 		t.Fatalf("posts = %+v", got.Posts)
+	}
+	if got.Posts[0].CreatedAt != "2026-09-03T00:00:00Z" || got.Posts[1].CreatedAt != "2026-09-02T00:00:00Z" {
+		t.Fatalf("post timestamps = %+v", got.Posts)
 	}
 }
 
@@ -127,6 +132,64 @@ func TestUserPostsValidatesTimeRange(t *testing.T) {
 	args := []string{"user-posts", "--username", "example", "--start-time", "2026-10-01T00:00:00Z", "--end-time", "2026-09-01T00:00:00Z"}
 	if code := Run(context.Background(), args, &stdout, &stderr, getenvNone); code != 2 || !strings.Contains(stderr.String(), "must be before") {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+}
+
+func TestWriteUserPostsOutputCreatesPrivateFileAndSecuresOverwrite(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		name := "create"
+		if existing {
+			name = "overwrite"
+		}
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "posts.json")
+			if existing {
+				if err := os.WriteFile(path, []byte(strings.Repeat("old contents", 100)), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(path, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out := output.UserPostsOutput{
+				Status: "complete", Posts: []output.UserPost{{ID: "1", Text: "private post"}},
+			}
+			var stdout bytes.Buffer
+			if err := writeUserPostsOutput(path, &stdout, out); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode().Perm(); got != 0o600 {
+				t.Fatalf("output permissions = %o, want 600", got)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got output.UserPostsOutput
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("output is not valid replacement JSON: %v", err)
+			}
+			if got.PostCount != 1 || len(got.Posts) != 1 || got.Posts[0].Text != "private post" {
+				t.Fatalf("output = %+v", got)
+			}
+			if !strings.Contains(stdout.String(), "Saved 1 posts to "+path+" (status: complete)") {
+				t.Fatalf("save confirmation = %q", stdout.String())
+			}
+		})
+	}
+}
+
+func TestWriteUserPostsOutputDoesNotConfirmFailedSave(t *testing.T) {
+	var stdout bytes.Buffer
+	if err := writeUserPostsOutput(t.TempDir(), &stdout, output.UserPostsOutput{}); err == nil {
+		t.Fatal("saving to a directory succeeded, want error")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("failed save produced stdout = %q", stdout.String())
 	}
 }
 

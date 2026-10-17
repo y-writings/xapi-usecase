@@ -109,7 +109,7 @@ available, so the file must not be read as every post in the interval.
 
 Posts are included whether or not they contain an external link. Each item records
 its ID, canonical URL, text, and creation time; when X supplies long-form
-`note_tweet` text, that full text is used. Replies and reposts are included by
+`note_post` text, that full text is used. Replies and reposts are included by
 default. Pass `--exclude-replies` and/or `--exclude-reposts` to ask X to omit them.
 
 User Posts is not Recent Search and the CLI therefore imposes no seven-day

@@ -132,8 +132,8 @@ func userPosts(
 				break
 			}
 			text := post.Text
-			if post.NoteTweet != nil && post.NoteTweet.Text != "" {
-				text = post.NoteTweet.Text
+			if post.NotePost != nil && post.NotePost.Text != "" {
+				text = post.NotePost.Text
 			}
 			out.Posts = append(out.Posts, output.UserPost{
 				ID: post.ID, URL: "https://x.com/" + user.Data.Username + "/status/" + post.ID,
@@ -186,7 +186,21 @@ func writeUserPostsOutput(path string, w io.Writer, out output.UserPostsOutput) 
 	}
 	data = append(data, '\n')
 	if path != "" {
-		if err := os.WriteFile(path, data, 0o600); err != nil {
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = file.Close() }()
+		if err := file.Chmod(0o600); err != nil {
+			return err
+		}
+		if err := file.Truncate(0); err != nil {
+			return err
+		}
+		if _, err := file.Write(data); err != nil {
+			return err
+		}
+		if err := file.Close(); err != nil {
 			return err
 		}
 		_, err = fmt.Fprintf(

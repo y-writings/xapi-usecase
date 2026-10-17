@@ -76,7 +76,6 @@ type Tweet struct {
 	CreatedAt string        `json:"created_at"`
 	Entities  TweetEntities `json:"entities"`
 	NotePost  *NotePost     `json:"note_post,omitempty"`
-	NoteTweet *NotePost     `json:"note_tweet,omitempty"`
 }
 
 type TweetEntities struct {
@@ -143,7 +142,7 @@ func (c *Client) UserPosts(
 	}
 	query := url.Values{}
 	query.Set("max_results", fmt.Sprintf("%d", options.MaxResults))
-	query.Set("tweet.fields", "created_at,note_tweet")
+	query.Set("post.fields", "created_at,note_post")
 	query.Set("start_time", options.StartTime)
 	query.Set("end_time", options.EndTime)
 	if options.PaginationToken != "" {
