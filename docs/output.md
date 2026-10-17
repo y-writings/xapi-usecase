@@ -6,6 +6,7 @@ shape, and how exit status relates to that output.
 | Command | stdout | stderr | Exit 0 | Exit 1 | Exit 2 | Contract |
 |---|---|---|---|---|---|---|
 | `search` | JSON, or a save confirmation with `--output` | Errors | Complete collection | Incomplete collection or runtime/write failure | Invalid arguments | [Generated search reference](reference/search-output.md) |
+| `user-posts` | JSON, or a save confirmation with `--output` | Errors | Complete collection or explicit CLI-limit stop | Incomplete collection or runtime/write failure | Invalid arguments | [Generated user-posts reference](reference/user-posts-output.md) |
 | `bookmarks list` | Pretty-printed X API JSON | Errors | Request and output succeeded, even if an HTTP 200 body contains upstream `errors` | Runtime/API failure | Invalid arguments | [X API response](https://docs.x.com/x-api/bookmarks/get-bookmarks) (pass-through) |
 | `auth login` | Browser URL and token-save confirmation text | Errors | Token saved | Login, callback, exchange, or write failure | Invalid arguments | Human-readable text; no JSON contract |
 
@@ -27,6 +28,25 @@ Without `--output`, JSON is written to stdout. With `--output FILE`, JSON is wri
 only to `FILE` (mode `0600`) and stdout receives a human-readable save confirmation;
 the streams are never combined.
 
+## User Posts lifecycle
+
+`user-posts` owns the format defined by `schemas/user-posts.schema.json`. Invalid
+arguments, token loading, and a failed preflight refresh happen before collection
+and do not produce JSON. Once username resolution is attempted, failures produce
+an `incomplete` document. The `authentication_or_access_denied`, `rate_limited`,
+`api_error`, and `request_failed` reasons distinguish terminal categories. A
+later-page failure or an HTTP 200 partial error retains posts already received.
+
+`complete` means X returned no next page within the upstream-accessible timeline.
+It does not assert that posts exist beyond X's most recent-3,200-post window or
+that the caller can see protected posts. `limit_reached` means the CLI stopped at
+the requested limit while more response data or a next-page token existed. Both
+successful statuses exit 0; `incomplete` exits 1. Zero results are represented by
+`post_count: 0` and `posts: []`.
+
+As with `search`, `--output FILE` writes only JSON to a mode-`0600` file and prints
+a save confirmation to stdout. Without it, the JSON document is printed to stdout.
+
 ## Bookmarks variability
 
 `bookmarks list` is a formatted pass-through of the upstream X API response, not a
@@ -44,7 +64,7 @@ mise run generate:check
 ```
 
 `generate` runs the repository generator (`go run ./tools/generate-output`) and
-updates the checked-in Go type and Markdown reference. `generate:check`, which is
+updates the checked-in Go types and Markdown references. `generate:check`, which is
 part of `mise run check`, regenerates and fails on tracked differences or untracked
 generated artifacts. Add future project-owned formats by adding a schema, extending
 the generator, checking in both generated artifacts, and adding schema unit and CLI

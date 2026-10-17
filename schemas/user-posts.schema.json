@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/y-writings/xapi-usecase/schemas/user-posts.schema.json",
+  "title": "UserPostsOutput",
+  "description": "The JSON document produced by the user-posts command after collection starts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "target_user", "conditions", "retrieved_at", "post_count", "posts"],
+  "properties": {
+    "status": {"type": "string", "enum": ["complete", "limit_reached", "incomplete"], "description": "Whether the available pages were exhausted, the CLI limit stopped collection, or an error stopped collection."},
+    "incomplete_reason": {"type": "string", "enum": ["authentication_or_access_denied", "rate_limited", "api_error", "request_failed"], "description": "Why collection stopped early. Present only when status is incomplete."},
+    "target_user": {"$ref": "#/$defs/TargetUser", "description": "The requested X user and, after successful resolution, their upstream identity."},
+    "conditions": {"$ref": "#/$defs/UserPostsConditions", "description": "The effective collection conditions."},
+    "retrieved_at": {"type": "string", "description": "UTC time at which this collection run started."},
+    "post_count": {"type": "integer", "minimum": 0, "description": "Number of posts retained; equals the length of posts."},
+    "posts": {"type": "array", "items": {"$ref": "#/$defs/UserPost"}, "description": "Posts returned by X, including posts without external links. Always an array."}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "incomplete"}}, "required": ["status"]}, "then": {"required": ["incomplete_reason"]}},
+    {"if": {"properties": {"status": {"enum": ["complete", "limit_reached"]}}, "required": ["status"]}, "then": {"not": {"required": ["incomplete_reason"]}}}
+  ],
+  "$defs": {
+    "TargetUser": {
+      "type": "object", "additionalProperties": false, "required": ["username"],
+      "properties": {
+        "id": {"type": "string", "description": "Upstream user identifier; omitted when username resolution failed."},
+        "name": {"type": "string", "description": "Upstream display name; omitted when username resolution failed."},
+        "username": {"type": "string", "description": "Username requested by the caller, normalized without a leading @ after resolution."}
+      }
+    },
+    "UserPostsConditions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["start_time", "end_time", "limit", "exclude_replies", "exclude_reposts"],
+      "properties": {
+        "start_time": {"type": "string", "description": "RFC 3339 inclusive lower time bound sent to X."},
+        "end_time": {"type": "string", "description": "RFC 3339 exclusive upper time bound sent to X."},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 3200, "description": "Maximum number of posts retained by the CLI."},
+        "exclude_replies": {"type": "boolean", "description": "Whether replies were excluded."},
+        "exclude_reposts": {"type": "boolean", "description": "Whether reposts were excluded."}
+      }
+    },
+    "UserPost": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "url", "text", "created_at"],
+      "properties": {
+        "id": {"type": "string", "description": "Upstream X post identifier."},
+        "url": {"type": "string", "description": "Canonical x.com URL for the post."},
+        "text": {"type": "string", "description": "Long-form text when supplied by X, otherwise the regular post text."},
+        "created_at": {"type": "string", "description": "Upstream created_at value; empty if X omits it."}
+      }
+    }
+  },
+  "examples": [
+    {"status":"complete","target_user":{"id":"42","name":"Example","username":"example"},"conditions":{"start_time":"2026-09-01T00:00:00Z","end_time":"2026-10-01T00:00:00Z","limit":100,"exclude_replies":false,"exclude_reposts":false},"retrieved_at":"2026-10-01T01:00:00Z","post_count":0,"posts":[]},
+    {"status":"limit_reached","target_user":{"id":"42","name":"Example","username":"example"},"conditions":{"start_time":"2026-09-01T00:00:00Z","end_time":"2026-10-01T00:00:00Z","limit":1,"exclude_replies":true,"exclude_reposts":true},"retrieved_at":"2026-10-01T01:00:00Z","post_count":1,"posts":[{"id":"123","url":"https://x.com/example/status/123","text":"Example post","created_at":"2026-09-02T00:00:00Z"}]}
+  ]
+}

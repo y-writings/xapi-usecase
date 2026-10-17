@@ -20,7 +20,8 @@ Before running the CLI, configure an approved X Developer App:
 - Enable these scopes: `tweet.read`, `users.read`, `bookmark.read`, `offline.access`.
 - Copy the OAuth2 Client ID.
 
-Both `bookmarks list` and `search` use the OAuth token saved by `auth login`.
+`bookmarks list`, `search`, and `user-posts` use the OAuth token saved by
+`auth login`.
 
 The CLI does not use or store a client secret.
 
@@ -84,6 +85,51 @@ that plan's recent-search window; X returns an API error for unsupported dates o
 operators. It does not crawl linked pages or summarize their contents. Consult the
 [X recent search documentation](https://docs.x.com/x-api/posts/recent-search) for
 the current plan-specific restrictions.
+
+## Retrieve a user's posts
+
+Resolve an X username and retrieve posts in an RFC 3339 time interval with the
+User Posts API:
+
+```sh
+go run ./cmd/xapi-usecase user-posts \
+  --username XDevelopers \
+  --start-time 2026-09-01T00:00:00Z \
+  --end-time 2026-10-01T00:00:00Z \
+  --limit 500 --output posts.json
+```
+
+The start boundary is inclusive and the end boundary is exclusive, matching the
+upstream API. The CLI rejects malformed timestamps and ranges where the start is
+not earlier than the end. It resolves `--username` with
+`GET /2/users/by/username/:username`, then pages
+`GET /2/users/:id/tweets` until X has no next page or `--limit` is reached.
+`status: "limit_reached"` means the CLI stopped while another result was
+available, so the file must not be read as every post in the interval.
+
+Posts are included whether or not they contain an external link. Each item records
+its ID, canonical URL, text, and creation time; when X supplies long-form
+`note_tweet` text, that full text is used. Replies and reposts are included by
+default. Pass `--exclude-replies` and/or `--exclude-reposts` to ask X to omit them.
+
+User Posts is not Recent Search and the CLI therefore imposes no seven-day
+lookback rule. X limits the timeline to the user's most recent 3,200 posts; date
+bounds do not make older posts available. The CLI's `--limit` (1–3,200) is a
+separate local collection cap. API access level, protected-post visibility, and
+rate limits can further restrict results. Authentication/access denial, rate
+limiting, other API errors, and request failures are distinguished in incomplete
+JSON output. Data from successful earlier pages and usable data accompanying an
+upstream partial error are retained.
+
+Authentication and refresh precedence are the same as for `search`: saved OAuth
+is the default, while `--bearer-token` or `XAPI_USECASE_BEARER_TOKEN` selects an
+explicit bearer token. The API calls require `tweet.read` and `users.read`; reading
+protected posts additionally depends on the authentication mode and caller's
+permission.
+
+See the generated [user-posts JSON field reference](docs/reference/user-posts-output.md)
+for the owned output contract and [command output guide](docs/output.md) for stream
+and exit-status behavior.
 
 ## Documentation
 

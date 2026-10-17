@@ -35,7 +35,7 @@ run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 go run ./tools/generate-output
-git diff --exit-code -- internal/output/search.gen.go docs/reference/search-output.md
+git diff --exit-code -- internal/output docs/reference
 test -z "$(git ls-files --others --exclude-standard -- internal/output docs/reference)"
 '''
 

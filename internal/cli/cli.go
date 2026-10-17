@@ -57,6 +57,8 @@ func Run(
 		err = bookmarksList(ctx, args[2:], stdout, stderr, getenv)
 	case args[0] == "search":
 		err = search(ctx, args[1:], stdout, stderr, getenv)
+	case args[0] == "user-posts":
+		err = userPosts(ctx, args[1:], stdout, stderr, getenv)
 	default:
 		printUsage(stderr)
 		return 2
@@ -228,6 +230,8 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  xapi-usecase auth login [options]")
 	_, _ = fmt.Fprintln(w, "  xapi-usecase bookmarks list [options]")
 	_, _ = fmt.Fprintln(w, "  xapi-usecase search --query QUERY [options]")
+	_, _ = fmt.Fprintln(w, "  xapi-usecase user-posts --username USERNAME "+
+		"--start-time RFC3339 --end-time RFC3339 [options]")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Run a command with --help for command-specific options.")
 }
