@@ -35,17 +35,15 @@
                 rel == "go.mod"
                 || rel == "go.sum"
                 || rel == "schemas"
-                || rel == "vendor"
                 || rel == "cmd"
                 || rel == "internal"
                 || pkgs.lib.hasPrefix "cmd/" rel
                 || pkgs.lib.hasPrefix "internal/" rel
-                || pkgs.lib.hasPrefix "schemas/" rel
-                || pkgs.lib.hasPrefix "vendor/" rel;
+                || pkgs.lib.hasPrefix "schemas/" rel;
             };
             subPackages = [ "cmd/xapi-usecase" ];
 
-            vendorHash = null;
+            vendorHash = "sha256-qVoj03LNLbdoCUAOydK7oEHsuZ1BZ6Z2jwYB3gPOfrw=";
 
             ldflags = [
               "-s"
