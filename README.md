@@ -131,6 +131,16 @@ See the generated [user-posts JSON field reference](docs/reference/user-posts-ou
 for the owned output contract and [command output guide](docs/output.md) for stream
 and exit-status behavior.
 
+## Development
+
+Go dependencies are managed with `go.mod` and `go.sum`. Dependency source is not
+committed to the repository. Run `mise run check` for formatting, generated-file,
+lint, and test checks.
+
+Nix fetches dependencies separately and verifies them using `vendorHash` in
+`flake.nix`. After changing dependencies, set it to `pkgs.lib.fakeHash`, run
+`nix build .# --no-link`, replace it with the reported `got` hash, and build again.
+
 ## Documentation
 
 - [Authentication](docs/auth.md): X Developer Console setup, `auth login`, login
