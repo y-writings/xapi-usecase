@@ -133,7 +133,7 @@ func docType(s *schema) string {
 }
 
 func goName(v string) string {
-	initialisms := map[string]string{"id": "ID", "url": "URL"}
+	initialisms := map[string]string{"id": "ID", "url": "URL", "urls": "URLs"}
 	var b strings.Builder
 	for word := range strings.SplitSeq(v, "_") {
 		if known := initialisms[word]; known != "" {

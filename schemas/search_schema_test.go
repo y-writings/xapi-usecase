@@ -23,15 +23,24 @@ func TestSearchSchemaAndExamples(t *testing.T) {
 func TestSearchSchemaRejectsInvalidDocuments(t *testing.T) {
 	s := compile(t, readDocument(t))
 	complete := `{"status":"complete","search":{"query":"q","limit":1},` +
-		`"retrieved_at":"now","post_count":0,"resource_count":0,"resources":[]}`
-	incomplete := `{"status":"incomplete","search":{"query":"q","limit":1},` +
-		`"retrieved_at":"now","post_count":0,"resource_count":0,"resources":[]}`
+		`"retrieved_at":"now","post_count":0,"posts":[]}`
+	var baseline any
+	if err := json.Unmarshal([]byte(complete), &baseline); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Validate(baseline); err != nil {
+		t.Fatalf("valid baseline was rejected: %v", err)
+	}
+	incomplete := strings.Replace(complete, `"complete"`, `"incomplete"`, 1)
+	limitReached := strings.Replace(complete, `"complete"`, `"limit_reached"`, 1)
 	cases := map[string]string{
 		"missing required": `{"status":"complete"}`,
-		"null array":       strings.Replace(complete, `"resources":[]`, `"resources":null`, 1),
+		"null array":       strings.Replace(complete, `"posts":[]`, `"posts":null`, 1),
 		"bad enum":         strings.Replace(complete, `"complete"`, `"stopped"`, 1),
 		"missing reason":   incomplete,
 		"reason complete":  complete[:1] + `"incomplete_reason":"api_error",` + complete[1:],
+		"reason limit": limitReached[:1] + `"incomplete_reason":"api_error",` +
+			limitReached[1:],
 		"unknown property": complete[:len(complete)-1] + `,"extra":true}`,
 		"limit too high":   strings.Replace(complete, `"limit":1`, `"limit":1001`, 1),
 	}

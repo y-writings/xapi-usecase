@@ -2,21 +2,37 @@
 
 package output
 
-// SearchOutput The JSON document produced by the search command after collection starts.
+// SearchOutput The post-oriented JSON document produced by the Recent Search command after collection starts.
 type SearchOutput struct {
 	IncompleteReason string           `json:"incomplete_reason,omitempty"`
 	PostCount        int              `json:"post_count"`
-	ResourceCount    int              `json:"resource_count"`
-	Resources        []Resource       `json:"resources"`
+	Posts            []Post           `json:"posts"`
 	RetrievedAt      string           `json:"retrieved_at"`
 	Search           SearchConditions `json:"search"`
 	Status           string           `json:"status"`
 }
 
-// Resource
-type Resource struct {
-	Sources []Source `json:"sources"`
-	URL     string   `json:"url"`
+// ExternalURL
+type ExternalURL struct {
+	ExpandedURL string `json:"expanded_url"`
+	ShortURL    string `json:"short_url"`
+}
+
+// Post
+type Post struct {
+	Author       PostAuthor    `json:"author"`
+	CreatedAt    string        `json:"created_at"`
+	ExternalURLs []ExternalURL `json:"external_urls"`
+	ID           string        `json:"id"`
+	Text         string        `json:"text"`
+	URL          string        `json:"url"`
+}
+
+// PostAuthor
+type PostAuthor struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Username string `json:"username"`
 }
 
 // SearchConditions
@@ -26,13 +42,4 @@ type SearchConditions struct {
 	Limit     int    `json:"limit"`
 	Query     string `json:"query"`
 	StartTime string `json:"start_time,omitempty"`
-}
-
-// Source
-type Source struct {
-	CreatedAt string `json:"created_at"`
-	PostID    string `json:"post_id"`
-	PostURL   string `json:"post_url"`
-	ShortURL  string `json:"short_url"`
-	Text      string `json:"text"`
 }
