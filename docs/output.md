@@ -5,7 +5,7 @@ shape, and how exit status relates to that output.
 
 | Command | stdout | stderr | Exit 0 | Exit 1 | Exit 2 | Contract |
 |---|---|---|---|---|---|---|
-| `search` | JSON, or a save confirmation with `--output` | Errors | Complete collection | Incomplete collection or runtime/write failure | Invalid arguments | [Generated search reference](reference/search-output.md) |
+| `search` | JSON, or a save confirmation with `--output` | Errors | Complete collection or explicit CLI-limit stop | Incomplete collection or runtime/write failure | Invalid arguments | [Generated search reference](reference/search-output.md) |
 | `user-posts` | JSON, or a save confirmation with `--output` | Errors | Complete collection or explicit CLI-limit stop | Incomplete collection or runtime/write failure | Invalid arguments | [Generated user-posts reference](reference/user-posts-output.md) |
 | `bookmarks list` | Pretty-printed X API JSON | Errors | Request and output succeeded, even if an HTTP 200 body contains upstream `errors` | Runtime/API failure | Invalid arguments | [X API response](https://docs.x.com/x-api/bookmarks/get-bookmarks) (pass-through) |
 | `auth login` | Browser URL and token-save confirmation text | Errors | Token saved | Login, callback, exchange, or write failure | Invalid arguments | Human-readable text; no JSON contract |

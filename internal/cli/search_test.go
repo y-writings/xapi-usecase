@@ -39,7 +39,7 @@ func TestSearchCollectsPostsWithAndWithoutLinksAndAuthors(t *testing.T) {
 		if got := r.URL.Query().Get("query"); got != "(AI tools) lang:ja" {
 			t.Fatalf("query = %q", got)
 		}
-		if got := r.URL.Query().Get("post.fields"); got != "author_id,created_at,entities,note_post" {
+		if got := r.URL.Query().Get("post.fields"); got != "created_at,entities,note_post" {
 			t.Fatalf("post.fields = %q", got)
 		}
 		if got := r.URL.Query().Get("expansions"); got != "author_id" {

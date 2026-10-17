@@ -181,7 +181,7 @@ func (c *Client) SearchRecent(ctx context.Context, options SearchOptions) (Searc
 	query := url.Values{}
 	query.Set("query", options.Query)
 	query.Set("max_results", fmt.Sprintf("%d", options.MaxResults))
-	query.Set("post.fields", "author_id,created_at,entities,note_post")
+	query.Set("post.fields", "created_at,entities,note_post")
 	query.Set("expansions", "author_id")
 	query.Set("user.fields", "name,username")
 	if options.StartTime != "" {
